@@ -175,8 +175,16 @@ class ActionLSTM(nn.Module):
 
 class Memory(nn.Module):
 
-    def __init__(self):
+    def __init__(self, hidden_dim, num_a_space, neg_slope, memory_dim):
         super(Memory, self).__init__()
+        self.K = nn.Sequential(nn.Linear(num_a_space, memory_dim),
+                               nn.LeakyReLU(neg_slope),
+                               nn.Linear(memory_dim, 9))
+        self.g = nn.Sequential(nn.Linear(hidden_dim, memory_dim),
+                               nn.LeakyReLU(neg_slope),
+                               nn.Linear(memory_dim, 1),
+                               nn.Sigmoid())
+                               
 
     def forward(self, x):
         pass
