@@ -12,6 +12,7 @@ num_a_space = 3
 neg_slope = 0.2
 # 64x64 for visdoom
 img_size = '64x64'
+# 48x80 for gta
 num_inp_channels = 3
 memory_dim = 512
 
