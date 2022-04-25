@@ -1,6 +1,6 @@
-from turtle import forward
 import torch
 from torch import nn
+from torch.nn import functional as F
 import math
 
 
@@ -180,14 +180,23 @@ class Memory(nn.Module):
         self.K = nn.Sequential(nn.Linear(num_a_space, memory_dim),
                                nn.LeakyReLU(neg_slope),
                                nn.Linear(memory_dim, 9))
-        self.g = nn.Sequential(nn.Linear(hidden_dim, memory_dim),
+        self.G = nn.Sequential(nn.Linear(hidden_dim, memory_dim),
                                nn.LeakyReLU(neg_slope),
                                nn.Linear(memory_dim, 1),
                                nn.Sigmoid())
                                
 
-    def forward(self, x):
-        pass
+    def forward(self, h, h_prev, a, use_h_for_gate=False):
+        if use_h_for_gate:
+            g_input = h
+        else:
+            # I don't know why, but this one is used as default
+            h_norm = F.normalize(h, dim=1)
+            h_prev_norm = F.normalize(h_prev, dim=1)
+            g_input = h_norm - h_prev_norm
+        
+        w_tmp = self.K(a).view(-1, 1, 3, 3)
+        
 
 
 class RenderingEngine(nn.Module):
