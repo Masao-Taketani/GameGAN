@@ -1,3 +1,4 @@
+from torch.autograd import Variable
 import numpy as np
 
 
@@ -9,3 +10,16 @@ def make_channels_first_and_normalize_img(img):
 
 def make_label_idx_to_onehot(label_idx, num_action_space):
     return np.eye(num_action_space)[label_idx].astype('float32')
+
+
+def to_variable(args, use_gpu):
+    if use_gpu:
+        if len(args) > 1:
+            return [Variable(elem).cuda() for elem in args]
+        else:
+            return Variable(args[0]).cuda()
+    else:
+        if len(args) > 1:
+            return [Variable(elem) for elem in args]
+        else:
+            return Variable(args[0])

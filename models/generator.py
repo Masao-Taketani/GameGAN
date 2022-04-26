@@ -1,7 +1,9 @@
+import utils
 import torch
 from torch import nn
 from torch.nn import functional as F
 import math
+import numpy as np
 
 
 class Generator(nn.Module):
@@ -15,7 +17,8 @@ class Generator(nn.Module):
 
 class DynamicsEngine(nn.Module):
 
-    def __init__(self, z_dim, hidden_dim, num_a_space, neg_slope, img_size, num_inp_channels, memory_dim=None):
+    def __init__(self, z_dim, hidden_dim, num_a_space, neg_slope, img_size, 
+                 num_inp_channels, memory_dim=None):
         super(DynamicsEngine, self).__init__()
         self.H = H(z_dim, hidden_dim, num_a_space, neg_slope, memory_dim)
         # project h onto the concat_dim
@@ -155,6 +158,7 @@ class ActionLSTM(nn.Module):
                                  nn.LeakyReLU(neg_slope),
                                  nn.Linear(concat_dim, 4 * hidden_dim))
         self.W_s = nn.Sequential(nn.Linear(hidden_dim, 4 * hidden_dim))
+
         self.init_Ws()
 
     def init_Ws(self):
@@ -175,8 +179,14 @@ class ActionLSTM(nn.Module):
 
 class Memory(nn.Module):
 
-    def __init__(self, hidden_dim, num_a_space, neg_slope, memory_dim, N):
+    def __init__(self, batch_size, dataset_name, hidden_dim, num_a_space, neg_slope,
+                 memory_dim, N, use_gpu):
         super(Memory, self).__init__()
+        self.batch_size = batch_size
+        self.dataset_name = dataset_name
+        self.memory_dim = memory_dim
+        self.N = N
+        self.use_gpu = use_gpu
         self.K = nn.Sequential(nn.Linear(num_a_space, memory_dim),
                                nn.LeakyReLU(neg_slope),
                                nn.Linear(memory_dim, 9))
@@ -184,9 +194,34 @@ class Memory(nn.Module):
                                nn.LeakyReLU(neg_slope),
                                nn.Linear(memory_dim, 1),
                                nn.Sigmoid())
-                               
+        self.E = nn.Sequential(nn.Linear(hidden_dim, 3 * memory_dim))
 
-    def forward(self, h, h_prev, a, use_h_for_gate=False):
+    def conv2d_for_alpha_and_w(self, alpha_prev, w):
+        """
+        inputs:
+            shape of alpha_prev: [batch_size, 1, N, N]
+            shape of w: [batch_size, 1, 3, 3]
+        outputs:
+            shape of alpha_t: [batch_size, 1, N, N]
+        """
+        inputs = alpha_prev.view(1, self.batch_size, self.N, self.N)
+        return F.conv2d(inputs, w, padding=1, groups=self.batch_size)
+
+    def write(self, erase_vec, add_vec, alpha_t, M):
+        # (bs, N**2 , 1) * (bs, 1, memory_dim) -> (bs, N**2, memory_dim)
+        alpha_erase = torch.bmm(alpha_t.unsqueeze(-1), erase_vec.unsqueeze(1))
+        # (bs, N**2 , 1) * (bs, 1, memory_dim) -> (bs, N**2, memory_dim)
+        alpha_add = torch.bmm(alpha_t.unsqueeze(-1), add_vec.unsqueeze(1))
+        return M * (1 - alpha_erase) + alpha_add
+
+    def read(self, alpha_t, M):
+        # (bs, 1, N**2) * (bs, N**2, memory_dim) -> (bs, 1, memory_dim)
+        m_t = torch.bmm(alpha_t.unsqueeze(1), M)
+        # shape of m_t: (bs, memory_dim)
+        return m_t.squeeze(1)
+
+    def forward(self, h, h_prev, a, alpha_prev, M, use_h_for_gate=False, 
+                devide_scale_for_softmax=0.1):
         if use_h_for_gate:
             g_input = h
         else:
@@ -195,8 +230,47 @@ class Memory(nn.Module):
             h_prev_norm = F.normalize(h_prev, dim=1)
             g_input = h_norm - h_prev_norm
         
-        w_tmp = self.K(a).view(-1, 1, 3, 3)
-        
+        w = self.K(a).view(-1, 1, 3, 3)
+
+        # for the following flipping thing, I don't why this is done. Nothing mentioned
+        # in the paper, but the original code does it
+        a_flipped = a.cpu().numpy()
+        _, a_idxes = torch.max(a, 1)
+        a_idxes = a_idxes.long().cpu().numpy()
+        mask = np.zeros((self.batch_size, 1))
+        for i in range(self.batch_size):
+            if 'gta' in self.dataset_name:
+                # 0: left, 1: no action, 2: right
+                if a_idxes[i] == 0:
+                    a_flipped[i][2] = 1.0
+                    a_flipped[i][0] = 0.0
+                    mask[i][0] = 1.0
+        mask = utils.to_variable(torch.FloatTensor(mask), self.use_gpu).view(-1, 1, 1, 1)
+        a_flipped = utils.to_variable(torch.FloatTensor(a_flipped), self.use_gpu)
+
+        w_flipped = torch.flip(self.K(a_flipped).view(-1, 1, 3, 3), [2, 3])
+        w = (1 - mask) * w + mask * w_flipped
+        w = F.softmax(w.view(self.batch_size, -1) / devide_scale_for_softmax, dim=1)
+        w = w.view(self.batch_size, 1, 3, 3)
+
+        g = self.G(g_input)
+        alpha_t = self.conv2d_for_alpha_and_w(alpha_prev.view(self.batch_size, 
+                                                            1, 
+                                                            self.N, 
+                                                            self.N), 
+                                            w)
+        # (batch_size, 1, N, N) -> (batch_size, N ** 2)
+        alpha_t = alpha_t.view(self.batch_size, -1)
+        alpha_t = alpha_t * g + alpha_prev * (1 - g)
+        erase_add_vecs = self.E(h)
+        erase_vec = erase_add_vecs[:, :self.memory_dim]
+        erase_vec = erase_vec.sigmoid(erase_vec)
+        add_vec = erase_add_vecs[:, self.memory_dim:2 * self.memory_dim]
+        other_vec = erase_add_vecs[:, 2 * self.memory_dim:]
+
+        M = self.write(erase_vec, add_vec, alpha_t, M)
+        m_t = self.read(alpha_t, M)
+        return [m_t, other_vec], M, alpha_t
 
 
 class RenderingEngine(nn.Module):
