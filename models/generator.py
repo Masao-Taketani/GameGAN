@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import utils
 import torch
 from torch import nn
@@ -37,7 +40,6 @@ class DynamicsEngine(nn.Module):
             z: z_t
             m: m_t-1
         """
-        print('input', h.shape, c.shape, x.shape, a.shape, z.shape, m.shape)
         v_t = self.proj_h(h) * self.H(a, z, m)
         s_t = self.C(x)
         h_t, c_t = self.action_lstm(c, v_t, s_t)
@@ -179,14 +181,16 @@ class ActionLSTM(nn.Module):
 
 class Memory(nn.Module):
 
-    def __init__(self, batch_size, dataset_name, hidden_dim, num_a_space, neg_slope,
-                 memory_dim, N, use_gpu):
+    def __init__(self, batch_size, dataset_name, hidden_dim, num_a_space, neg_slope, memory_dim,
+                 N, device, use_h_for_gate=False, devide_scale_for_softmax=0.1):
         super(Memory, self).__init__()
         self.batch_size = batch_size
         self.dataset_name = dataset_name
         self.memory_dim = memory_dim
         self.N = N
-        self.use_gpu = use_gpu
+        self.device = device
+        self.use_h_for_gate = use_h_for_gate
+        self.devide_scale_for_softmax = devide_scale_for_softmax
         self.K = nn.Sequential(nn.Linear(num_a_space, memory_dim),
                                nn.LeakyReLU(neg_slope),
                                nn.Linear(memory_dim, 9))
@@ -220,9 +224,8 @@ class Memory(nn.Module):
         # shape of m_t: (bs, memory_dim)
         return m_t.squeeze(1)
 
-    def forward(self, h, h_prev, a, alpha_prev, M, use_h_for_gate=False, 
-                devide_scale_for_softmax=0.1):
-        if use_h_for_gate:
+    def forward(self, h, h_prev, a, alpha_prev, M):
+        if self.use_h_for_gate:
             g_input = h
         else:
             # I don't know why, but this one is used as default
@@ -245,12 +248,12 @@ class Memory(nn.Module):
                     a_flipped[i][2] = 1.0
                     a_flipped[i][0] = 0.0
                     mask[i][0] = 1.0
-        mask = utils.to_variable(torch.FloatTensor(mask), self.use_gpu).view(-1, 1, 1, 1)
-        a_flipped = utils.to_variable(torch.FloatTensor(a_flipped), self.use_gpu)
+        mask = torch.tensor(mask, device=self.device).float().view(-1, 1, 1, 1)
+        a_flipped = torch.tensor(a_flipped, device=self.device).float()
 
         w_flipped = torch.flip(self.K(a_flipped).view(-1, 1, 3, 3), [2, 3])
         w = (1 - mask) * w + mask * w_flipped
-        w = F.softmax(w.view(self.batch_size, -1) / devide_scale_for_softmax, dim=1)
+        w = F.softmax(w.view(self.batch_size, -1) / self.devide_scale_for_softmax, dim=1)
         w = w.view(self.batch_size, 1, 3, 3)
 
         g = self.G(g_input)
@@ -264,7 +267,7 @@ class Memory(nn.Module):
         alpha_t = alpha_t * g + alpha_prev * (1 - g)
         erase_add_vecs = self.E(h)
         erase_vec = erase_add_vecs[:, :self.memory_dim]
-        erase_vec = erase_vec.sigmoid(erase_vec)
+        erase_vec = erase_vec.sigmoid()
         add_vec = erase_add_vecs[:, self.memory_dim:2 * self.memory_dim]
         other_vec = erase_add_vecs[:, 2 * self.memory_dim:]
 
