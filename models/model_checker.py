@@ -35,5 +35,5 @@ def check_memory():
 
 
 if __name__ == '__main__':
-    #check_dynamics_engine()
+    check_dynamics_engine()
     check_memory()
