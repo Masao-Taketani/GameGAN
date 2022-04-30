@@ -4,6 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.utils import spectral_norm as SN
 import numpy as np
 
 from models.model_modules import H, C, ActionLSTM
@@ -146,17 +147,21 @@ class Memory(nn.Module):
 
 class RenderingEngine(nn.Module):
 
-    def __init__(self, batch_size, K, first_fmap_size=(7, 7), img_size=(64, 64)):
+    def __init__(self, batch_size, hidden_dim, K, first_fmap_size=(7, 7), img_size=(64, 64)):
         super(RenderingEngine, self).__init__()
         self.batch_size = batch_size
         self.K = K
         self.first_fmap_size = first_fmap_size
         self.img_size = img_size
+
+        # 512 is used in the paper, but 1024 is used in the code
+        self.sn_linear = SN(nn.Linear(hidden_dim, 1024 * 7 * 7))
     
     def forward(self, c):
         if self.K == 1:
             # simple rendering engine
             # c: h_t
+            h = self.sn_linear(c)
             pass
         else:
             # rendering engine for disentangling static and dynamic components

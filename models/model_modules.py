@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn.utils import spectral_norm as SN
+from torch.nn import functional as F
 import math
 
 
@@ -134,3 +136,34 @@ class ActionLSTM(nn.Module):
         c_t = f_t * c_prev + i_t * candidate_state
         h_t = o_t * c_t.tanh()
         return h_t, c_t
+
+
+class REResBlock(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size=3, upsample_sacle_factor=2):
+        super(REResBlock, self).__init__()
+        self.upsample_scale_factor = upsample_sacle_factor
+        self.instance_norm_1 = nn.InstanceNorm2d(in_channels)
+        self.instance_norm_2 = nn.InstanceNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=False)
+        self.sn_conv2d_1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size))
+        self.sn_conv2d_2 = SN(nn.Conv2d(out_channels, out_channels, kernel_size))
+        self.use_1x1conv = True if in_channels != out_channels else False
+        if self.use_1x1conv:
+            self.conv2d1x1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
+
+    def forward(self, inp):
+        x = self.instance_norm_1(inp)
+        x = self.relu(x)
+        # upscale each height and width for each feature map
+        x = F.interpolate(x, scale_factor=self.upsample_scale_factor)
+        x = self.sn_conv2d_1(x)
+        x = self.instance_norm_2(x)
+        x = self.relu(x)
+        x = self.sn_conv2d_2(x)
+
+        # for a skip connection
+        inp = F.interpolate(inp, scale_factor=self.upsample_scale_factor)
+        if self.use_1x1conv:
+            inp = self.conv2d1x1(inp)
+        return x + inp
