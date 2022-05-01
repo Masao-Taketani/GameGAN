@@ -7,5 +7,6 @@
   - [Neural Turing Machines](https://arxiv.org/abs/1410.5401)<br>
   - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)<br>
   - [Spectral Normalization for Generative Adversarial Networks](https://arxiv.org/abs/1802.05957)<br>
+  - [Self-Attention Generative Adversarial Networks](https://arxiv.org/abs/1805.08318)<br>
 - Repos
   - [Sentdex/GANTheftAuto](https://github.com/Sentdex/GANTheftAuto)<br>

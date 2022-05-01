@@ -156,7 +156,27 @@ class RenderingEngine(nn.Module):
 
         # 512 is used in the paper, but 1024 is used in the code
         self.sn_linear = SN(nn.Linear(hidden_dim, 1024 * 7 * 7))
-    
+
+        """
+        [64x64]
+        when K=1
+        {'in_channels': [512, 256, 128], 'out_channels': [256, 128, 64], 
+         'upsample': [True, True, True], 'resolution': [16, 32, 64], 
+         'attention': {16: False, 32: False, 64: True}
+        when K=2
+        {'in_channels': [256, 128, 64], 'out_channels': [128, 64, 32], 
+        'upsample': [True, True, True], 'resolution': [16, 32, 64], 
+        'attention': {16: False, 32: False, 64: True}}
+        [80x48]
+        k = 1
+        {'in_channels': [768, 384, 192, 96, 96], 'out_channels': [384, 192, 96, 96, 96],
+         'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256],
+         'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
+        K = 2
+        {'in_channels': [256, 128, 64, 32, 32], 'out_channels': [128, 64, 32, 32, 32], 
+         'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256], 
+         'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
+        """
     def forward(self, c):
         if self.K == 1:
             # simple rendering engine
