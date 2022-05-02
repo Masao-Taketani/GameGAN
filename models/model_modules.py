@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn.utils import spectral_norm as SN
 from torch.nn import functional as F
+from torch.nn import Parameter
 import math
 
 
@@ -167,3 +168,42 @@ class REResBlock(nn.Module):
         if self.use_1x1conv:
             inp = self.conv2d1x1(inp)
         return x + inp
+
+
+class SA(nn.Module):
+
+    def __init__(self, in_channels):
+        super(SA, self).__init__()
+        # for memory efficiency
+        self.k = 8
+        self.in_channels = in_channels
+        self.f = SN(nn.Conv2d(in_channels, in_channels // self.k, kernel_size=1, padding=0, bias=False))
+        self.g = SN(nn.Conv2d(in_channels, in_channels // self.k, kernel_size=1, padding=0, bias=False))
+        # For dimentionality reduction purpose, out channels for h is devided by 2
+        self.h = SN(nn.Conv2d(in_channels, in_channels // 2, kernel_size=1, padding=0, bias=False))
+        self.o = self.f = SN(nn.Conv2d(in_channels // 2, in_channels, kernel_size=1, padding=0, bias=False))
+        self.gamma = Parameter(torch.tensor(0.), requires_grad=True)
+
+    def forward(self, x):
+        # f acts as a query, g acts as a key, and h acts as a value
+        f = self.f(x)
+        # For dimentionality reduction purpose, g and h are max-pooled
+        g = F.max_pool2d(self.g(x), [2, 2])
+        h = F.max_pool2d(self.h(x), [2, 2])
+        # reshape f: (bs, c/8, h, w) -> (bs, c/8, N)
+        f = f.view(-1, self.in_channels // self.k, x.shape[2] * x.shape[3])
+        # Since g and h are max-pooled, num locations(N) for them are devided by 4
+        # reshape g: (bs, c/8, h/2, w/2) -> (bs, c/8, N/4)
+        g = g.view(-1, self.in_channels // self.k, x.shape[2] * x.shape[3] // 4)
+        # reshape h: (bs, c/2, h/2, w/2) -> (bs, c/2, N/4)
+        h = h.view(-1, self.in_channels // 2, x.shape[2] * x.shape[3] // 4)
+        # matmul: (bs, N, c/8) x (bs, c/8, N/4) -> (bs, N, N/4)
+        matmul = torch.bmm(f.transpose(1, 2), g)
+        # beta: attention map, shape: (bs, N, N/4)
+        beta = F.softmax(matmul)
+        # mutmul: (bs, c/2, N/4) x (bs, N/4, N) -> (bs, c/2, N)
+        matmul = torch.bmm(h, beta.transpose(1, 2))
+        # As for input shape, before reshape: (bs, c//2, N), after reshape: (bs, c//2, h, w)
+        # shape of o: (bs, c, h, w)
+        o = self.o(matmul.view(-1, self.in_channels // 2, x.shape[2], x.shape[3]))
+        return self.gamma * o + x
