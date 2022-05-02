@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from torch.nn.utils import spectral_norm as SN
 import numpy as np
 
-from models.model_modules import H, C, ActionLSTM
+from models.model_modules import H, C, ActionLSTM, REResBlock, SA
 
 
 
@@ -147,42 +147,69 @@ class Memory(nn.Module):
 
 class RenderingEngine(nn.Module):
 
-    def __init__(self, batch_size, hidden_dim, K, first_fmap_size=(7, 7), img_size=(64, 64)):
+    def __init__(self, batch_size, hidden_dim, K, model_arch_dict, use_memory, activation=nn.ReLU(inplace=False)):
         super(RenderingEngine, self).__init__()
         self.batch_size = batch_size
         self.K = K
-        self.first_fmap_size = first_fmap_size
-        self.img_size = img_size
-
-        # 512 is used in the paper, but 1024 is used in the code
-        self.sn_linear = SN(nn.Linear(hidden_dim, 1024 * 7 * 7))
+        self.model_arch_dict = model_arch_dict
 
         """
-        [64x64]
+        [vizdoom]
         when K=1
-        {'in_channels': [512, 256, 128], 'out_channels': [256, 128, 64], 
-         'upsample': [True, True, True], 'resolution': [16, 32, 64], 
+        {'img_size': (64, 64), first_fmap_size=(8, 8), 'in_channels': [512, 256, 128], 'out_channels': [256, 128, 64], 
+         'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
          'attention': {16: False, 32: False, 64: True}
         when K=2
-        {'in_channels': [256, 128, 64], 'out_channels': [128, 64, 32], 
-        'upsample': [True, True, True], 'resolution': [16, 32, 64], 
+        {'in_channels': [256, 128, 64], first_fmap_size=(8, 8), 'out_channels': [128, 64, 32], 
+        'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
         'attention': {16: False, 32: False, 64: True}}
-        [80x48]
+        [gta]
         k = 1
-        {'in_channels': [768, 384, 192, 96, 96], 'out_channels': [384, 192, 96, 96, 96],
+        {'img_size': (48, 80), first_fmap_size=(6, 10), 'in_channels': [768, 384, 192, 96, 96], 'out_channels': [384, 192, 96, 96, 96],
          'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256],
          'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
         K = 2
-        {'in_channels': [256, 128, 64, 32, 32], 'out_channels': [128, 64, 32, 32, 32], 
+        {'img_size': (48, 80), first_fmap_size=(6, 10), 'in_channels': [256, 128, 64, 32, 32], 'out_channels': [128, 64, 32, 32, 32], 
          'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256], 
          'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
         """
+        self.blocks = []
+        for i in range(self.K):
+            if self.K == 1:
+                self.sn_linear = SN(nn.Linear(hidden_dim, 
+                    model_arch_dict['in_channels'] * model_arch_dict['first_fmap_size'][0] * model_arch_dict['first_fmap_size'][1]))
+
+            for j in range(len(self.model_arch_dict['out_channels'])):
+                upsample_scale_factor = self.model_arch_dict['upsample'][j]
+                
+                if j == 0:
+                    in_channels = self.model_arch_dict['in_channels'][0] if self.K == 1 else 512
+                else:
+                    in_channels = self.model_arch_dict['in_channels'][j]
+                
+                self.blocks.append(REResBlock(in_channels, self.model_arch_dict['out_channels'][j], 
+                                              upsample_sacle_factor=upsample_scale_factor, activation=activation))
+
+                if self.model_arch_dict['attention'][self.model_arch_dict['resolution'][j]] and self.K == 1:
+                    self.blocks.append(SA(self.model_arch_dict['out_channels'][j]))
+            
+            self.blocks.extend([activation, SN(nn.Conv2d(self.model_arch_dict['out_channels'][-1], 3))])
+
+        self.module_list = nn.ModuleList(self.blocks)
+        #if K == 1:
+        #    if use_memory:
+
+
     def forward(self, c):
         if self.K == 1:
             # simple rendering engine
             # c: h_t
             h = self.sn_linear(c)
-            pass
+            h = h.view(h.shape[0], -1, self.model_arch_dict['first_fmap_size'][0], self.model_arch_dict['first_fmap_size'][1])
+            for f in self.module_list:
+                h = f(h)
+            rendering_img = torch.tanh(h)
+            return rendering_img
         else:
             # rendering engine for disentangling static and dynamic components
             # c: [m_t, other_vec]

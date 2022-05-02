@@ -141,12 +141,13 @@ class ActionLSTM(nn.Module):
 
 class REResBlock(nn.Module):
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, upsample_sacle_factor=2):
+    def __init__(self, in_channels, out_channels, kernel_size=3, upsample_sacle_factor=2,
+                 activation=nn.ReLU(inplace=False)):
         super(REResBlock, self).__init__()
         self.upsample_scale_factor = upsample_sacle_factor
         self.instance_norm_1 = nn.InstanceNorm2d(in_channels)
         self.instance_norm_2 = nn.InstanceNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=False)
+        self.activation = activation
         self.sn_conv2d_1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size))
         self.sn_conv2d_2 = SN(nn.Conv2d(out_channels, out_channels, kernel_size))
         self.use_1x1conv = True if in_channels != out_channels else False
@@ -155,12 +156,12 @@ class REResBlock(nn.Module):
 
     def forward(self, inp):
         x = self.instance_norm_1(inp)
-        x = self.relu(x)
+        x = self.activation(x)
         # upscale each height and width for each feature map
         x = F.interpolate(x, scale_factor=self.upsample_scale_factor)
         x = self.sn_conv2d_1(x)
         x = self.instance_norm_2(x)
-        x = self.relu(x)
+        x = self.activation(x)
         x = self.sn_conv2d_2(x)
 
         # for a skip connection
