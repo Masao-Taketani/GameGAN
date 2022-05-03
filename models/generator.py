@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm as SN
+from torch.nn import init
 import numpy as np
 
 from models.model_modules import H, C, ActionLSTM, REResBlock, SA
@@ -156,20 +157,20 @@ class RenderingEngine(nn.Module):
         """
         [vizdoom]
         when K=1
-        {'img_size': (64, 64), first_fmap_size=(8, 8), 'in_channels': [512, 256, 128], 'out_channels': [256, 128, 64], 
+        {'img_size': (64, 64), 'first_fmap_size': (8, 8), 'in_channels': [512, 256, 128], 'out_channels': [256, 128, 64], 
          'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
-         'attention': {16: False, 32: False, 64: True}
+         'attention': {16: False, 32: False, 64: True}}
         when K=2
-        {'in_channels': [256, 128, 64], first_fmap_size=(8, 8), 'out_channels': [128, 64, 32], 
+        {'in_channels': [256, 128, 64], 'first_fmap_size': (8, 8), 'out_channels': [128, 64, 32], 
         'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
         'attention': {16: False, 32: False, 64: True}}
         [gta]
         k = 1
-        {'img_size': (48, 80), first_fmap_size=(6, 10), 'in_channels': [768, 384, 192, 96, 96], 'out_channels': [384, 192, 96, 96, 96],
+        {'img_size': (48, 80), 'first_fmap_size': (6, 10), 'in_channels': [768, 384, 192, 96, 96], 'out_channels': [384, 192, 96, 96, 96],
          'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256],
          'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
         K = 2
-        {'img_size': (48, 80), first_fmap_size=(6, 10), 'in_channels': [256, 128, 64, 32, 32], 'out_channels': [128, 64, 32, 32, 32], 
+        {'img_size': (48, 80), 'first_fmap_size': (6, 10), 'in_channels': [256, 128, 64, 32, 32], 'out_channels': [128, 64, 32, 32, 32], 
          'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256], 
          'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
         """
@@ -177,7 +178,7 @@ class RenderingEngine(nn.Module):
         for i in range(self.K):
             if self.K == 1:
                 self.sn_linear = SN(nn.Linear(hidden_dim, 
-                    model_arch_dict['in_channels'] * model_arch_dict['first_fmap_size'][0] * model_arch_dict['first_fmap_size'][1]))
+                    model_arch_dict['in_channels'][0] * model_arch_dict['first_fmap_size'][0] * model_arch_dict['first_fmap_size'][1]))
 
             for j in range(len(self.model_arch_dict['out_channels'])):
                 upsample_scale_factor = self.model_arch_dict['upsample'][j]
@@ -193,12 +194,19 @@ class RenderingEngine(nn.Module):
                 if self.model_arch_dict['attention'][self.model_arch_dict['resolution'][j]] and self.K == 1:
                     self.blocks.append(SA(self.model_arch_dict['out_channels'][j]))
             
-            self.blocks.extend([activation, SN(nn.Conv2d(self.model_arch_dict['out_channels'][-1], 3))])
+            self.blocks.extend([activation, SN(nn.Conv2d(self.model_arch_dict['out_channels'][-1], 3, 3))])
 
         self.module_list = nn.ModuleList(self.blocks)
         #if K == 1:
         #    if use_memory:
 
+        self.init_weights()
+    
+    def init_weights(self):
+        for module in self.modules():
+            if (isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear)):
+                # orthogonal initalization is used in the original code
+                init.orthogonal_(module.weight)
 
     def forward(self, c):
         if self.K == 1:

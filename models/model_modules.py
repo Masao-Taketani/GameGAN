@@ -148,8 +148,8 @@ class REResBlock(nn.Module):
         self.instance_norm_1 = nn.InstanceNorm2d(in_channels)
         self.instance_norm_2 = nn.InstanceNorm2d(out_channels)
         self.activation = activation
-        self.sn_conv2d_1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size))
-        self.sn_conv2d_2 = SN(nn.Conv2d(out_channels, out_channels, kernel_size))
+        self.sn_conv2d_1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size, padding=1))
+        self.sn_conv2d_2 = SN(nn.Conv2d(out_channels, out_channels, kernel_size, padding=1))
         self.use_1x1conv = True if in_channels != out_channels else False
         if self.use_1x1conv:
             self.conv2d1x1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
@@ -182,7 +182,7 @@ class SA(nn.Module):
         self.g = SN(nn.Conv2d(in_channels, in_channels // self.k, kernel_size=1, padding=0, bias=False))
         # For dimentionality reduction purpose, out channels for h is devided by 2
         self.h = SN(nn.Conv2d(in_channels, in_channels // 2, kernel_size=1, padding=0, bias=False))
-        self.o = self.f = SN(nn.Conv2d(in_channels // 2, in_channels, kernel_size=1, padding=0, bias=False))
+        self.o = SN(nn.Conv2d(in_channels // 2, in_channels, kernel_size=1, padding=0, bias=False))
         self.gamma = Parameter(torch.tensor(0.), requires_grad=True)
 
     def forward(self, x):
