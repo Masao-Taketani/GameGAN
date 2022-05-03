@@ -150,7 +150,9 @@ class REResBlock(nn.Module):
         self.activation = activation
         self.sn_conv2d_1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size, padding=1))
         self.sn_conv2d_2 = SN(nn.Conv2d(out_channels, out_channels, kernel_size, padding=1))
-        self.use_1x1conv = True if in_channels != out_channels else False
+        # in the original code it is always upsampled, so I set it True for 'use_1x1conv'
+        #self.use_1x1conv = True if in_channels != out_channels else False
+        self.use_1x1conv = True
         if self.use_1x1conv:
             self.conv2d1x1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
 

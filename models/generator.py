@@ -194,7 +194,7 @@ class RenderingEngine(nn.Module):
                 if self.model_arch_dict['attention'][self.model_arch_dict['resolution'][j]] and self.K == 1:
                     self.blocks.append(SA(self.model_arch_dict['out_channels'][j]))
             
-            self.blocks.extend([activation, SN(nn.Conv2d(self.model_arch_dict['out_channels'][-1], 3, 3))])
+            self.blocks.extend([activation, SN(nn.Conv2d(self.model_arch_dict['out_channels'][-1], 3, 3, padding=1))])
 
         self.module_list = nn.ModuleList(self.blocks)
         #if K == 1:
@@ -212,8 +212,10 @@ class RenderingEngine(nn.Module):
         if self.K == 1:
             # simple rendering engine
             # c: h_t
+            print('sn_linear:', self.sn_linear)
             h = self.sn_linear(c)
             h = h.view(h.shape[0], -1, self.model_arch_dict['first_fmap_size'][0], self.model_arch_dict['first_fmap_size'][1])
+            print('module_list:', self.module_list)
             for f in self.module_list:
                 h = f(h)
             rendering_img = torch.tanh(h)
