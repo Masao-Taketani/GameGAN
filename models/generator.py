@@ -33,7 +33,7 @@ class DynamicsEngine(nn.Module):
         self.action_lstm = ActionLSTM(hidden_dim, neg_slope, self.H.concat_dim)
         
         
-    def forward(self, h, c, x, a, z, m):
+    def forward(self, h, c, x, a, z, m=None):
         """
         arguments:
             h: h_t-1

@@ -29,7 +29,7 @@ class H(nn.Module):
                                  nn.Linear(self.concat_dim, self.concat_dim))
 
 
-    def forward(self, a, z, m):
+    def forward(self, a, z, m=None):
         a_emb = self.embed_a(a)
         z_emb = self.embed_z(z)
 
@@ -61,6 +61,7 @@ class C(nn.Module):
         """
         super(C, self).__init__()
         model_type = self.check_conv_type(img_size)
+
         if model_type == 'vizdoom':
             convs = [nn.Conv2d(num_inp_channels, hidden_dim // 8, 4, 1, 1),
                      nn.LeakyReLU(neg_slope),
@@ -73,6 +74,7 @@ class C(nn.Module):
                      Reshape((-1, 7 * 7 * (hidden_dim // 8))),
                      nn.Linear(7 * 7 * (hidden_dim // 8), hidden_dim),
                      nn.LeakyReLU(neg_slope)]
+
         elif model_type == 'pacman':
             convs = [nn.Conv2d(num_inp_channels, hidden_dim // 8, 3, 2, 0),
                      nn.LeakyReLU(neg_slope),
@@ -88,6 +90,24 @@ class C(nn.Module):
                      nn.Linear( 8 * 8 * (hidden_dim // 8), hidden_dim),
                      nn.LeakyReLU(neg_slope)]
         
+        elif model_type == 'gta':
+            convs = [nn.Conv2d(num_inp_channels, hidden_dim // 8, 4, 1, 1),
+                     nn.LeakyReLU(neg_slope),
+                     nn.Conv2d(hidden_dim // 8, hidden_dim // 8, 3, 1, 1),
+                     nn.LeakyReLU(neg_slope),
+                     nn.Conv2d(hidden_dim // 8, hidden_dim // 4, 3, 2, 1),
+                     nn.LeakyReLU(neg_slope),
+                     nn.Conv2d(hidden_dim // 4, hidden_dim // 4, 3, 1, 1),
+                     nn.LeakyReLU(neg_slope),
+                     nn.Conv2d(hidden_dim // 4, hidden_dim // 2, 3, 2, 1),
+                     nn.LeakyReLU(neg_slope),
+                     nn.Conv2d(hidden_dim // 2, hidden_dim // 8, 3, 2, 1),
+                     nn.LeakyReLU(neg_slope),
+                     Reshape((-1, 6 * 10 * (hidden_dim // 8))),
+                     nn.Linear( 6 * 10 * (hidden_dim // 8), hidden_dim),
+                     nn.LeakyReLU(neg_slope)]
+
+        
         self.img_encoder = nn.Sequential(*convs)
 
     def check_conv_type(self, img_size):
@@ -100,8 +120,10 @@ class C(nn.Module):
             else:
                 raise ValueError(f"img_size {img_size} cannot be accepted")
         else:
-            # TODO: implement the case when img_size is not square
-            raise ValueError(f"img_size {img_size} cannot be accepted")
+            if img_shape[0] == 48 and img_shape[1] == 80:
+                model_type = 'gta'
+            else:
+                raise ValueError(f"img_size {img_size} cannot be accepted")
         return model_type
 
     def forward(self, inp):
