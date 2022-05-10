@@ -1,3 +1,4 @@
+from turtle import forward
 import torch
 from torch import nn
 from torch.nn.utils import spectral_norm as SN
@@ -176,7 +177,7 @@ class REResBlock(nn.Module):
         #self.use_1x1conv = True if in_channels != out_channels else False
         self.use_1x1conv = True
         if self.use_1x1conv:
-            self.conv2d1x1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
+            self.sn_conv2d1x1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
 
     def forward(self, inp):
         x = self.instance_norm_1(inp)
@@ -191,7 +192,8 @@ class REResBlock(nn.Module):
         # for a skip connection
         inp = F.interpolate(inp, scale_factor=self.upsample_scale_factor)
         if self.use_1x1conv:
-            inp = self.conv2d1x1(inp)
+            inp = self.sn_conv2d1x1(inp)
+
         return x + inp
 
 
@@ -232,3 +234,40 @@ class SA(nn.Module):
         # shape of o: (bs, c, h, w)
         o = self.o(matmul.view(-1, self.in_channels // 2, x.shape[2], x.shape[3]))
         return self.gamma * o + x
+
+
+class DResBlock(nn.Module):
+
+    def __init__(self, in_channels, out_channels, activation, do_downsample, use_preactivation):
+        super(DResBlock, self).__init__()
+        self.use_1x1conv = True if (in_channels != out_channels) or do_downsample else False
+        self.activation = activation
+        self.do_downsample = do_downsample
+        self.use_preactivation = use_preactivation
+
+        self.sn_conv2d_1 = SN(nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1))
+        self.sn_conv2d_2 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
+        
+        if self.use_1x1conv:
+            self.sn_conv2d1x1 = SN(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
+        
+        if self.do_downsample:
+            self.downsample = nn.AvgPool2d(2)
+
+    def forward(self, inp):
+        x = F.relu(inp) if self.use_preactivation else inp
+        x = self.sn_conv2d_1(x)
+        x = self.activation(x)
+        x = self.sn_conv2d_2(x)
+        if self.do_downsample:
+            x = self.downsample(x)
+
+        # for a skip connection
+        if self.use_preactivation:
+            if self.use_1x1conv: inp = self.sn_conv2d1x1(inp)
+            if self.do_downsample: inp = self.downsample(inp)
+        else:
+            if self.do_downsample: inp = self.downsample(inp)
+            if self.use_1x1conv: inp = self.sn_conv2d1x1(inp)
+            
+        return x + inp
