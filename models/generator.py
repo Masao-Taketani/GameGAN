@@ -5,7 +5,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm as SN
-from torch.nn import init
 import numpy as np
 
 from models.model_modules import H, C, ActionLSTM, REResBlock, SA
@@ -178,7 +177,8 @@ class RenderingEngine(nn.Module):
         for i in range(self.K):
             if self.K == 1:
                 self.sn_linear = SN(nn.Linear(hidden_dim, 
-                    model_arch_dict['in_channels'][0] * model_arch_dict['first_fmap_size'][0] * model_arch_dict['first_fmap_size'][1]))
+                    model_arch_dict['in_channels'][0] * model_arch_dict['first_fmap_size'][0] * model_arch_dict['first_fmap_size'][1],
+                    bias=True))
 
             for j in range(len(self.model_arch_dict['out_channels'])):
                 upsample_scale_factor = self.model_arch_dict['upsample'][j]
@@ -206,7 +206,7 @@ class RenderingEngine(nn.Module):
         for module in self.modules():
             if (isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear)):
                 # orthogonal initalization is used in the original code
-                init.orthogonal_(module.weight)
+                nn.init.orthogonal_(module.weight)
 
     def forward(self, c):
         if self.K == 1:
