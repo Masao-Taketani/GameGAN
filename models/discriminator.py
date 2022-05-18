@@ -2,7 +2,7 @@ from tokenize import Single
 import torch
 from torch import nn
 
-from models.model_modules import DResBlock, SA, SN
+from models.model_modules import DResBlock, SA, SN, Reshape
 
 
 class SingleImageDiscriminator(nn.Module):
@@ -55,9 +55,34 @@ class SingleImageDiscriminator(nn.Module):
         h = x
         for f in self.module_list:
             h = f(h)
+        # shape of h: (bs, out_channels, h, w)
         h = self.activation(h)
         # Apply global sum pooling as in SN-GAN. It returns (bs, out_channels)
         out = torch.sum(h, [2, 3])
-        out = self.linear(out)
+        out = self.last_linear(out)
 
         return out, h
+
+
+class ActionConditionedDiscriminator(nn.Module):
+
+    def __init__(self, action_space, img_size, hidden_dim, neg_slope, neg_action=None):
+        super(ActionConditionedDiscriminator, self).__init__()
+        # In the original code, 256 is always used for the dim
+        dim = 256
+        kernel_size = (3, 5) if img_size[0] == 48 and img_size[1] == 80 else 4
+
+        self.action_emb = nn.Linear(action_space, dim)
+        # In the original code, BatchNorm is not used for block1 and block2
+        self.block1 = nn.Sequential(SN(nn.Conv2d(hidden_dim, dim,
+                                                 kernel_size=kernel_size,
+                                                 padding=0)),
+                                    nn.LeakyReLU(neg_slope),
+                                    Reshape((-1, dim)))
+        self.block2 = nn.Sequential(SN(nn.Linear(hidden_dim, hidden_dim)),
+                                    nn.LeakyReLU(neg_slope),
+                                    SN(nn.Linear(hidden_dim, 1)))
+        
+
+
+class TemporalDiscriminator():
