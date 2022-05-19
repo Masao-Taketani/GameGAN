@@ -66,9 +66,10 @@ class SingleImageDiscriminator(nn.Module):
 
 class ActionConditionedDiscriminator(nn.Module):
 
-    def __init__(self, action_space, img_size, hidden_dim, neg_slope, neg_action=None):
+    def __init__(self, batch_size, action_space, img_size, hidden_dim, neg_slope, neg_action=None):
         super(ActionConditionedDiscriminator, self).__init__()
         # In the original code, 256 is always used for the dim
+        self.batch_size = batch_size
         dim = 256
         kernel_size = (3, 5) if img_size[0] == 48 and img_size[1] == 80 else 4
 
@@ -83,6 +84,13 @@ class ActionConditionedDiscriminator(nn.Module):
                                     nn.LeakyReLU(neg_slope),
                                     SN(nn.Linear(hidden_dim, 1)))
         
+    def forward(self, imgs, actions, num_warmup_frames, warmup_frames, ):
+        # shape of actions: [(bs, action_space) x num_steps]
+        # shape of warmup_frames: [(bs, 3, h, w) x num_steps]
+        # change of shape after concat: [(bs, 3, h, w) x warmup_steps] -> (bs x warmup_steps, 3, h, w)
+        real_frames = torch.cat(warmup_frames[:num_warmup_frames], dim=0)
+
+
 
 
 class TemporalDiscriminator():
