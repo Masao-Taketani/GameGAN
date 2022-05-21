@@ -66,7 +66,7 @@ class SingleImageDiscriminator(nn.Module):
 
 class ActionConditionedDiscriminator(nn.Module):
 
-    def __init__(self, batch_size, action_space, img_size, hidden_dim, neg_slope, neg_action=None):
+    def __init__(self, batch_size, action_space, img_size, hidden_dim, neg_slope, model_arch_dict, neg_action=None):
         super(ActionConditionedDiscriminator, self).__init__()
         # In the original code, 256 is always used for the dim
         self.batch_size = batch_size
@@ -75,22 +75,37 @@ class ActionConditionedDiscriminator(nn.Module):
 
         self.action_emb = nn.Linear(action_space, dim)
         # In the original code, BatchNorm is not used for block1 and block2
-        self.block1 = nn.Sequential(SN(nn.Conv2d(hidden_dim, dim,
+        self.conv_for_x_t0_t1 = nn.Sequential(SN(nn.Conv2d(hidden_dim, dim,
                                                  kernel_size=kernel_size,
                                                  padding=0)),
-                                    nn.LeakyReLU(neg_slope),
-                                    Reshape((-1, dim)))
-        self.block2 = nn.Sequential(SN(nn.Linear(hidden_dim, hidden_dim)),
-                                    nn.LeakyReLU(neg_slope),
-                                    SN(nn.Linear(hidden_dim, 1)))
+                                                 nn.LeakyReLU(neg_slope),
+                                                 Reshape((-1, dim)))
+        self.linear_given_act = nn.Sequential(SN(nn.Linear(hidden_dim, hidden_dim)),
+                                                 nn.LeakyReLU(neg_slope),
+                                                 SN(nn.Linear(hidden_dim, 1)))
         
-    def forward(self, imgs, actions, num_warmup_frames, warmup_frames, ):
-        # shape of actions: [(bs, action_space) x num_steps]
-        # shape of warmup_frames: [(bs, 3, h, w) x num_steps]
-        # change of shape after concat: [(bs, 3, h, w) x warmup_steps] -> (bs x warmup_steps, 3, h, w)
-        real_frames = torch.cat(warmup_frames[:num_warmup_frames], dim=0)
+        self.single_disc = SingleImageDiscriminator(model_arch_dict)
+        
+    def forward(self, imgs, actions, num_warmup_frames, real_frames, ):
+        # shape of imgs: (total steps - 1) * bs, c, h, w)
+        # shape of actions: [(bs, action_space) * num_steps]
+        # shape of real_frames: [(bs, 3, h, w) * num_steps]
 
-
+        # change of shape after concat: [(bs, 3, h, w) * warmup_steps] -> (bs * warmup_steps, 3, h, w)
+        warmup_real_frames = torch.cat(real_frames[:num_warmup_frames], dim=0)
+        # as for the input of the discriminator, it combines warmup_real_frames, which consist of warmup steps of
+        # dataset frames, and imgs, which consist of total steps of generated or dataset frames.
+        full_frame_pred, bottom_fmaps = self.single_disc(torch.cat([warmup_real_frames, imgs], dim=0))
+        # only use the results correspoing to the imgs
+        full_frame_pred = full_frame_pred[num_warmup_frames*self.batch_size:]
+        x_t1_fmaps = bottom_fmaps[num_warmup_frames*self.batch_size:]
+        # taking fmaps of warmup steps and the rest of generated of real frames except the last step
+        x_t0_fmaps = torch.cat([bottom_fmaps[:num_warmup_frames*self.batch_size],
+                                                 bottom_fmaps[(num_warmup_frames*2-1)*self.batch_size:-self.batch_size]],
+                                                 dim=0)
+        act_emb = self.action_emb(torch.cat(actions, dim=0))
+        merged_fmaps = self.conv_for_x_t0_t1(torch.cat([x_t0_fmaps, x_t1_fmaps], dim=1))
+        consistent_pred_given_act = self.linear_given_act(torch.cat([act_emb, merged_fmaps], dim=1))
 
 
 class TemporalDiscriminator():
