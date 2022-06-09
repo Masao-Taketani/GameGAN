@@ -6,6 +6,10 @@ from models.model_modules import DResBlock, SA, SN, Reshape
 
 
 class Discriminator(nn.Module):
+    """
+    This class consists of a single image discriminator, action-conditioned discriminator, 
+    and temporal discriminator
+    """
 
     def __init__(self, batch_size, model_arch_dict, action_space, img_size, hidden_dim, neg_slope):
         super(Discriminator, self).__init__()
@@ -145,4 +149,58 @@ class ActionConditionedDiscriminator(nn.Module):
 
 class TemporalDiscriminator(nn.Module):
 
-    def __init__(self, temporal_window):
+    def __init__(self, temporal_window, neg_slope, num_filters=16):
+        in_channels = num_filters * 16
+        base_channels = 64
+        kernel_size1 = (2, 2, 2)
+        kernel_size2 = (3, 3, 3)
+        stride1 = (1, 1, 1)
+        stride2 = (2, 1, 1)
+        first_logit_kernel = (2, 1, 1)
+        first_logit_stride = (1, 1, 1)
+        kernel_size3 = (3, 1, 1)
+        stride3 = (1, 1, 1)
+        second_logit_kernel = (3, 1, 1)
+        second_logit_stride = (1, 1, 1)
+        kernel_size4 = (3, 1, 1)
+        stride4 = (2, 1, 1)
+        third_logit_kernel = (4, 1, 1)
+        third_logit_stride = (2, 1, 1)
+
+        layers, logits = [], []
+
+        # BatchNorms are not used in the original code
+        first_layers = nn.Sequential(SN(nn.Conv3d(in_channels, base_channels, 
+                                                  kernel_size1, stride1)),
+                                     nn.LeakyReLU(neg_slope),
+                                     SN(nn.Conv3d(base_channels, base_channels * 2, 
+                                                  kernel_size2, stride2)),
+                                     nn.LeakyReLU(neg_slope))
+        
+        first_logit = SN(nn.Conv3d(base_channels * 2, 1, first_logit_kernel, 
+                                   first_logit_stride))
+        layers.append(first_layers)
+        logits.append(first_logit)
+
+        if temporal_window >= 12:
+            second_layers = nn.Sequential(SN(nn.Conv3d(base_channels * 2, base_channels * 4, 
+                                                       kernel_size3, stride3)),
+                                          nn.LeakyReLU(neg_slope))
+            
+            second_logit = SN(nn.Conv3d(base_channels * 4, 1, second_logit_kernel, 
+                                        second_logit_stride))
+            layers.append(second_layers)
+            logits.append(second_logit)
+
+        if temporal_window >= 18:
+            third_layers = nn.Sequential(SN(nn.Conv3d(base_channels * 4, base_channels * 8, 
+                                                       kernel_size4, stride4)),
+                                          nn.LeakyReLU(neg_slope))
+            
+            third_logit = SN(nn.Conv3d(base_channels * 8, 1, third_logit_kernel, 
+                                       third_logit_stride))
+            layers.append(third_layers)
+            logits.append(third_logit)
+
+        self.conv3d_layers = nn.ModuleList(layers)
+        self.conv3d_logits = nn.ModuleList(logits)
