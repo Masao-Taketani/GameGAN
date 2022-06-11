@@ -149,7 +149,9 @@ class ActionConditionedDiscriminator(nn.Module):
 
 class TemporalDiscriminator(nn.Module):
 
-    def __init__(self, temporal_window, neg_slope, num_filters=16):
+    def __init__(self, batch_size, temporal_window, neg_slope, num_filters=16):
+        self.batch_size = batch_size
+        # arch hyper-params
         in_channels = num_filters * 16
         base_channels = 64
         kernel_size1 = (2, 2, 2)
@@ -204,3 +206,26 @@ class TemporalDiscriminator(nn.Module):
 
         self.conv3d_layers = nn.ModuleList(layers)
         self.conv3d_logits = nn.ModuleList(logits)
+
+    def forward(self, bottom_fmaps, num_warmup_frames):
+        """nn.Conv3d
+        input: (bs, c_in, d_in, h_in, w_in) output: (bs, c_out, d_out, h_out, w_out)
+        """
+        sliced_fmaps = []
+
+        # slice fmaps of warmup steps
+        for fm in bottom_fmaps[:num_warmup_frames * self.batch_size].split(self.batch_size, dim=0):
+            sliced_fmaps.append(fm)
+        # slice fmaps of corresponding generated or real frames
+        for fm in bottom_fmaps[(2 * num_warmup_frames - 1) * self.batch_size:].split(self.batch_size, dim=0):
+            sliced_fmaps.append(fm)
+
+        # create an input for conv3d. shape: (bs, c, d, h, w) (d is for temporal)
+        inp = torch.stack(sliced_fmaps, dim=2)
+        # use [1, 256, 32, 3, 5] for debugging
+
+        tempo_preds = []
+
+        first = self.conv3d_layers[0](inp)
+        first_logit = self.conv3d_logits[0](first)
+        tempo_preds.append(first_logit.view(self.batch_size, -1))
