@@ -32,10 +32,10 @@ class Discriminator(nn.Module):
 
         # as for the input of the discriminator, it combines warmup_real_frames, which consist of warmup steps of
         # dataset frames, and imgs, which consist of total steps of generated or dataset frames.
-        full_frame_pred, bottom_fmaps = self.single_disc(torch.cat([warmup_real_frames, imgs], dim=0))
+        full_frame_preds, bottom_fmaps = self.single_disc(torch.cat([warmup_real_frames, imgs], dim=0))
         
         # only use the results correspoing to the imgs
-        full_frame_pred = full_frame_pred[num_warmup_frames*self.batch_size:]
+        full_frame_preds = full_frame_preds[num_warmup_frames*self.batch_size:]
         x_t1_fmaps = bottom_fmaps[num_warmup_frames*self.batch_size:]
         
         # take fmaps of warmup steps and the rest of generated or real frames except the last step
@@ -47,7 +47,15 @@ class Discriminator(nn.Module):
 
         tempo_preds = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
 
-
+        out = {}
+        out['pred_frame_fmaps'] = x_t1_fmaps[:(len(real_frames)-1)*self.batch_size]
+        out['act_preds'] = act_preds
+        out['full_frame_preds'] = full_frame_preds
+        out['temp_preds'] = tempo_preds
+        out['neg_act_preds'] = neg_act_preds
+        out['act_recon'] = act_recon
+        out['z_recon'] = z_recon
+        return out
 
 
 class SingleImageDiscriminator(nn.Module):
