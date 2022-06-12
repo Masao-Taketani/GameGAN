@@ -1,8 +1,8 @@
 from tokenize import Single
 import torch
-from torch import nn
-
-from models.model_modules import DResBlock, SA, SN, Reshape
+from torch import neg, neg_, nn
+from torch.nn.utils import spectral_norm as SN
+from models.model_modules import DResBlock, SA, Reshape
 
 
 class Discriminator(nn.Module):
@@ -11,9 +11,13 @@ class Discriminator(nn.Module):
     and temporal discriminator
     """
 
-    def __init__(self, batch_size, model_arch_dict, action_space, img_size, hidden_dim, neg_slope):
+    def __init__(self, batch_size, model_arch_dict, action_space, img_size, hidden_dim, neg_slope, 
+                 temporal_window):
         super(Discriminator, self).__init__()
         self.batch_size = batch_size
+        self.img_size = img_size
+        self.neg_slope = neg_slope
+        self.temporal_window = temporal_window
 
         self.single_disc = SingleImageDiscriminator(model_arch_dict)
         self.act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope)
@@ -40,6 +44,8 @@ class Discriminator(nn.Module):
                                 dim=0)
 
         act_preds, neg_act_preds, act_recon, z_recon = self.act_cond_disc(actions, x_t0_fmaps, x_t1_fmaps)
+
+        tempo_preds = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
 
 
 
@@ -149,13 +155,17 @@ class ActionConditionedDiscriminator(nn.Module):
 
 class TemporalDiscriminator(nn.Module):
 
-    def __init__(self, batch_size, temporal_window, neg_slope, num_filters=16):
+    def __init__(self, batch_size, img_size, temporal_window, neg_slope, num_filters=16):
         self.batch_size = batch_size
         # arch hyper-params
         in_channels = num_filters * 16
         base_channels = 64
-        kernel_size1 = (2, 2, 2)
-        kernel_size2 = (3, 3, 3)
+        if img_size[0] == 48 and img_size[1] == 80:
+            kernel_size1 = (2, 2, 4)
+            kernel_size2 = (3, 2, 2)
+        else:
+            kernel_size1 = (2, 2, 2)
+            kernel_size2 = (3, 3, 3)
         stride1 = (1, 1, 1)
         stride2 = (2, 1, 1)
         first_logit_kernel = (2, 1, 1)
@@ -222,10 +232,13 @@ class TemporalDiscriminator(nn.Module):
 
         # create an input for conv3d. shape: (bs, c, d, h, w) (d is for temporal)
         inp = torch.stack(sliced_fmaps, dim=2)
-        # use [1, 256, 32, 3, 5] for debugging
 
         tempo_preds = []
 
-        first = self.conv3d_layers[0](inp)
-        first_logit = self.conv3d_logits[0](first)
-        tempo_preds.append(first_logit.view(self.batch_size, -1))
+        # use an input tensor shaped as [1, 256, 32, 3, 5] for debugging
+        for layers, logit in zip(self.conv3d_layers, self.conv3d_logits):
+            inp = layers(inp)
+            pred = logit(inp)
+            tempo_preds.append(pred.view(self.batch_size, -1))
+
+        return tempo_preds        
