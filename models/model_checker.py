@@ -1,4 +1,5 @@
 from generator import *
+from discriminator import *
 import torch
 from torchsummary import summary
 
@@ -25,16 +26,36 @@ use_memory = False
 ## for vizdoom
 #img_size = '64x64'
 #dataset_name = 'vizdoom'
-#model_arch_dict = {'img_size': (64, 64), 'first_fmap_size': (8, 8), 'in_channels': [512, 256, 128], 'out_channels': [256, 128, 64], 
-#         'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
-#         'attention': {16: False, 32: False, 64: True}}
+# for generator
+#gen_model_arch_dict = {'img_size': (64, 64), 'first_fmap_size': (8, 8), 'in_channels': [512, 256, 128], 
+#                       'out_channels': [256, 128, 64], 
+#                       'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
+#                       'attention': {16: False, 32: False, 64: True}}
+# for discriminator
+#disc_model_arch_dict = {'in_channels': [3, 16, 32, 64, 128], 
+#                        'out_channels': [16, 32, 64, 128, 256], 
+#                        'downsample': [True, True, True, True, False], 
+#                        'resolution': [32, 16, 8, 4, 4], 
+#                        'attention': {4: False, 8: False, 16: False, 32: False, 64: True}}
 
 ## for gta
 img_size = '48x80'
 dataset_name = 'gta'
-model_arch_dict = {'img_size': (48, 80), 'first_fmap_size': (6, 10), 'in_channels': [768, 384, 192, 96, 96], 'out_channels': [384, 192, 96, 96, 96],
-         'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256],
-         'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
+# for generator
+gen_model_arch_dict = {'img_size': (48, 80), 'first_fmap_size': (6, 10), 'in_channels': [768, 384, 192, 96, 96], 
+                       'out_channels': [384, 192, 96, 96, 96],
+                       'upsample': [2, 2, 2, 1, 1], 'resolution': [16, 32, 64, 128, 256],
+                       'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
+# for discriminator
+disc_model_arch_dict = {'in_channels':   [3, 16, 32, 64, 64, 64, 128, 128], 
+                        'out_channels': [16, 32, 64, 64, 64, 128, 128, 256], 
+                        'downsample': [True, True, False, False, True, True, False, False], 
+                        'resolution': [64, 32, 16, 8, 4, 4, 4, 4], 
+                        'attention': {4: False, 8: False, 16: False, 32: True, 64: True, 128: False}}
+action_space = 3
+temporal_window = 32
+# check disc input size for imgs, actions, num_warmup_frames, real_frames, pred_neg_act
+
 
 
 def check_dynamics_engine():
@@ -56,8 +77,15 @@ def check_memory():
 
 
 def check_rendering_engine():
-    re = RenderingEngine(batch_size, hidden_dim, K, model_arch_dict, use_memory)
+    re = RenderingEngine(batch_size, hidden_dim, K, gen_model_arch_dict, use_memory)
     model = re.to(device)
+    summary(model, [(hidden_dim,)])
+
+
+def check_discriminator():
+    disc = Discriminator(batch_size, disc_model_arch_dict, action_space, img_size, hidden_dim, neg_slope, 
+                         temporal_window)
+    model = disc.to(device)
     summary(model, [(hidden_dim,)])
 
 

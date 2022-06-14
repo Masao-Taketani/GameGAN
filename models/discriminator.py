@@ -22,7 +22,7 @@ class Discriminator(nn.Module):
         self.single_disc = SingleImageDiscriminator(model_arch_dict)
         self.act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope)
 
-    def forward(self, imgs, actions, num_warmup_frames, real_frames, neg_actions=None):
+    def forward(self, imgs, actions, num_warmup_frames, real_frames, pred_neg_act=False):
         # shape of imgs: (total steps - 1) * bs, c, h, w)
         # shape of actions: [(bs, action_space) * num_steps]
         # shape of real_frames: [(bs, 3, h, w) * num_steps]
@@ -43,7 +43,7 @@ class Discriminator(nn.Module):
                                 bottom_fmaps[(num_warmup_frames*2-1)*self.batch_size:-self.batch_size]],
                                 dim=0)
 
-        act_preds, neg_act_preds, act_recon, z_recon = self.act_cond_disc(actions, x_t0_fmaps, x_t1_fmaps)
+        act_preds, neg_act_preds, act_recon, z_recon = self.act_cond_disc(actions, x_t0_fmaps, x_t1_fmaps, pred_neg_act)
 
         tempo_preds = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
 
@@ -140,7 +140,7 @@ class ActionConditionedDiscriminator(nn.Module):
 
         self.reconstruct_action_z = nn.Linear(dim, action_space + act_z)
         
-    def forward(self, actions, x_t0_fmaps, x_t1_fmaps):
+    def forward(self, actions, x_t0_fmaps, x_t1_fmaps, pred_neg_act):
         neg_act_preds = None
         
         # predict for potive samples
@@ -149,7 +149,7 @@ class ActionConditionedDiscriminator(nn.Module):
         act_preds = self.last_linear_given_act(torch.cat([act_vecs, trans_vecs], dim=1))
         
         # predict for negative samples
-        if not neg_act_preds:
+        if not pred_neg_act:
             neg_act_emb = self.action_emb(torch.cat(actions, dim=0))
             neg_act_preds = self.last_linear_given_act(torch.cat([neg_act_emb, trans_vecs], dim=1))
 
