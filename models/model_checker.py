@@ -54,10 +54,20 @@ disc_model_arch_dict = {'in_channels':   [3, 16, 32, 64, 64, 64, 128, 128],
                         'attention': {4: False, 8: False, 16: False, 32: True, 64: True, 128: False}}
 action_space = 3
 temporal_window = 32
+img_size = (48, 80)
 # check disc input size for imgs, actions, num_warmup_frames, real_frames, pred_neg_act
+#images: torch.Size([31, 3, 48, 80])
+#actions: 32
+#actions[0]: torch.Size([1, 3])
+#states: 32
+#states[0]: torch.Size([1, 3, 48, 80])
+#warm_up: 16
+#neg_actions: 32
+#neg_actions[0]: torch.Size([1, 3])
 
 
 
+# generator tests
 def check_dynamics_engine():
     de = DynamicsEngine(z_dim, hidden_dim, num_a_space, neg_slope, img_size, num_inp_channels, memory_dim=memory_dim)
     model = de.to(device)
@@ -82,14 +92,34 @@ def check_rendering_engine():
     summary(model, [(hidden_dim,)])
 
 
-def check_discriminator():
-    disc = Discriminator(batch_size, disc_model_arch_dict, action_space, img_size, hidden_dim, neg_slope, 
-                         temporal_window)
-    model = disc.to(device)
-    summary(model, [(hidden_dim,)])
+# discriminator tests
+def check_single_disc():
+    singl_disc = SingleImageDiscriminator(disc_model_arch_dict)
+    model = singl_disc.to(device)
+    summary(model, [(3, 48, 80)])
+
+
+def check_act_cond_disc():
+    act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope, True)
+    model = act_cond_disc.to(device)
+    summary(model, [(3,), (256, 3, 5), (256, 3, 5), (3,)])
+
+
+def check_tempo_disc():
+    tempo_disc = TemporalDiscriminator(batch_size, img_size, temporal_window, neg_slope, debug=True)
+    model = tempo_disc.to(device)
+    summary(model, [(256, 3, 5), (16,)])
 
 
 if __name__ == '__main__':
-    check_dynamics_engine()
-    check_memory()
-    check_rendering_engine()
+    # generator tests
+    #print('generator tests')
+    #check_dynamics_engine()
+    #check_memory()
+    #check_rendering_engine()
+
+    # discriminator tests
+    print('discriminator tests')
+    check_single_disc()
+    check_act_cond_disc()
+    check_tempo_disc()

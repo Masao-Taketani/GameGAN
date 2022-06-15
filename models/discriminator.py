@@ -22,7 +22,7 @@ class Discriminator(nn.Module):
         self.single_disc = SingleImageDiscriminator(model_arch_dict)
         self.act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope)
 
-    def forward(self, imgs, actions, num_warmup_frames, real_frames, pred_neg_act=False):
+    def forward(self, imgs, actions, num_warmup_frames, real_frames, neg_actions=None):
         # shape of imgs: (total steps - 1) * bs, c, h, w)
         # shape of actions: [(bs, action_space) * num_steps]
         # shape of real_frames: [(bs, 3, h, w) * num_steps]
@@ -43,7 +43,7 @@ class Discriminator(nn.Module):
                                 bottom_fmaps[(num_warmup_frames*2-1)*self.batch_size:-self.batch_size]],
                                 dim=0)
 
-        act_preds, neg_act_preds, act_recon, z_recon = self.act_cond_disc(actions, x_t0_fmaps, x_t1_fmaps, pred_neg_act)
+        act_preds, neg_act_preds, act_recon, z_recon = self.act_cond_disc(actions, x_t0_fmaps, x_t1_fmaps, neg_actions)
 
         tempo_preds = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
 
@@ -119,10 +119,12 @@ class SingleImageDiscriminator(nn.Module):
 
 class ActionConditionedDiscriminator(nn.Module):
 
-    def __init__(self, action_space, img_size, hidden_dim, neg_slope):
+    def __init__(self, action_space, img_size, hidden_dim, neg_slope, debug=False):
         super(ActionConditionedDiscriminator, self).__init__()
         # In the original code, 256 is always used for the dim
         self.action_space = action_space
+        self.debug = debug
+
         dim = 256
         kernel_size = (3, 5) if img_size[0] == 48 and img_size[1] == 80 else 4
         act_z = 32
@@ -140,21 +142,27 @@ class ActionConditionedDiscriminator(nn.Module):
 
         self.reconstruct_action_z = nn.Linear(dim, action_space + act_z)
         
-    def forward(self, actions, x_t0_fmaps, x_t1_fmaps, pred_neg_act):
+    def forward(self, actions, x_t0_fmaps, x_t1_fmaps, neg_actions):
         neg_act_preds = None
         
         # predict for potive samples
-        act_vecs = self.action_emb(torch.cat(actions, dim=0))
-        trans_vecs = self.conv_for_x_t0_t1(torch.cat([x_t0_fmaps, x_t1_fmaps], dim=1))
-        act_preds = self.last_linear_given_act(torch.cat([act_vecs, trans_vecs], dim=1))
+        if not self.debug:
+            act_vecs = self.action_emb(torch.cat(actions, dim=0))
+        else:
+            act_vecs = self.action_emb(actions)
+        transit_vecs = self.conv_for_x_t0_t1(torch.cat([x_t0_fmaps, x_t1_fmaps], dim=1))
+        act_preds = self.last_linear_given_act(torch.cat([act_vecs, transit_vecs], dim=1))
         
         # predict for negative samples
-        if not pred_neg_act:
-            neg_act_emb = self.action_emb(torch.cat(actions, dim=0))
-            neg_act_preds = self.last_linear_given_act(torch.cat([neg_act_emb, trans_vecs], dim=1))
+        if neg_actions is not None:
+            if not self.debug:
+                neg_act_emb = self.action_emb(torch.cat(neg_actions, dim=0))
+            else:
+                neg_act_emb = self.action_emb(neg_actions)
+            neg_act_preds = self.last_linear_given_act(torch.cat([neg_act_emb, transit_vecs], dim=1))
 
         # calculate reconstruction for actions
-        act_z_recon = self.reconstruct_action_z(trans_vecs)
+        act_z_recon = self.reconstruct_action_z(transit_vecs)
         act_recon = act_z_recon[:, :self.action_space]
         z_recon = act_z_recon[:, self.action_space:]
 
@@ -163,8 +171,11 @@ class ActionConditionedDiscriminator(nn.Module):
 
 class TemporalDiscriminator(nn.Module):
 
-    def __init__(self, batch_size, img_size, temporal_window, neg_slope, num_filters=16):
+    def __init__(self, batch_size, img_size, temporal_window, neg_slope, num_filters=16, debug=False):
+        super(TemporalDiscriminator, self).__init__()
         self.batch_size = batch_size
+        self.debug = debug
+
         # arch hyper-params
         in_channels = num_filters * 16
         base_channels = 64
@@ -229,9 +240,13 @@ class TemporalDiscriminator(nn.Module):
         """nn.Conv3d
         input: (bs, c_in, d_in, h_in, w_in) output: (bs, c_out, d_out, h_out, w_out)
         """
-        sliced_fmaps = []
+        if self.debug:
+            bottom_fmaps = torch.randn(47, 256, 3, 5).cuda()
+            num_warmup_frames = 16
+            self.batch_size = 1
 
         # slice fmaps of warmup steps
+        sliced_fmaps = []
         for fm in bottom_fmaps[:num_warmup_frames * self.batch_size].split(self.batch_size, dim=0):
             sliced_fmaps.append(fm)
         # slice fmaps of corresponding generated or real frames
@@ -242,7 +257,6 @@ class TemporalDiscriminator(nn.Module):
         inp = torch.stack(sliced_fmaps, dim=2)
 
         tempo_preds = []
-
         # use an input tensor shaped as [1, 256, 32, 3, 5] for debugging
         for layers, logit in zip(self.conv3d_layers, self.conv3d_logits):
             inp = layers(inp)
