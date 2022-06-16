@@ -147,11 +147,14 @@ class ActionConditionedDiscriminator(nn.Module):
         
         # predict for potive samples
         if not self.debug:
-            act_vecs = self.action_emb(torch.cat(actions, dim=0))
+            act_emb = self.action_emb(torch.cat(actions, dim=0))
         else:
-            act_vecs = self.action_emb(actions)
+            act_emb = self.action_emb(actions)
+            print('act_emb:', act_emb.shape)
+            print('x_t0_fmaps:', x_t0_fmaps.shape)
+            print('x_t1_fmaps:', x_t1_fmaps.shape)
         transit_vecs = self.conv_for_x_t0_t1(torch.cat([x_t0_fmaps, x_t1_fmaps], dim=1))
-        act_preds = self.last_linear_given_act(torch.cat([act_vecs, transit_vecs], dim=1))
+        act_preds = self.last_linear_given_act(torch.cat([act_emb, transit_vecs], dim=1))
         
         # predict for negative samples
         if neg_actions is not None:
@@ -159,6 +162,7 @@ class ActionConditionedDiscriminator(nn.Module):
                 neg_act_emb = self.action_emb(torch.cat(neg_actions, dim=0))
             else:
                 neg_act_emb = self.action_emb(neg_actions)
+                print('neg_act_emb:', neg_act_emb.shape)
             neg_act_preds = self.last_linear_given_act(torch.cat([neg_act_emb, transit_vecs], dim=1))
 
         # calculate reconstruction for actions
@@ -166,6 +170,11 @@ class ActionConditionedDiscriminator(nn.Module):
         act_recon = act_z_recon[:, :self.action_space]
         z_recon = act_z_recon[:, self.action_space:]
 
+        if self.debug:
+            print('act_preds:', act_preds.shape)
+            print('neg_act_preds:', neg_act_preds.shape)
+            print('act_recon:', act_recon.shape)
+            print('z_recon:', z_recon.shape)
         return act_preds, neg_act_preds, act_recon, z_recon
 
 
