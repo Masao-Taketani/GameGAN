@@ -1,5 +1,6 @@
 import sys
 import os
+from types import DynamicClassAttribute
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import torch
 from torch import nn
@@ -8,16 +9,44 @@ from torch.nn.utils import spectral_norm as SN
 import numpy as np
 
 from models.model_modules import H, C, ActionLSTM, REResBlock, SA
-
+import utils
 
 
 class Generator(nn.Module):
 
-    def __init__(self, z_dim, hidden_dim, use_memory):
+    def __init__(self, batch_size, z_dim, hidden_dim, use_gpu, num_a_space, 
+                 neg_slope, img_size, num_inp_channels, memory_dim=None):
         super(Generator, self).__init__()
-        self.z_dim = z_dim
+        self.batch_size = batch_size
+        self.z_dist = utils.get_random_noise_dist(z_dim)
         self.hidden_dim = hidden_dim
-        self.use_memory = use_memory
+        self.use_gpu = use_gpu
+        self.memory_dim = memory_dim
+
+        self.de = DynamicsEngine(z_dim, hidden_dim, num_a_space, neg_slope, 
+                                 img_size, num_inp_channels, memory_dim)
+
+
+    def proceed_step(self, x, h, c, a, m):
+        # x: 1 step image
+        x = x.detach()
+        z = self.z_dist.sample((self.batch_size,))
+        if self.use_gpu:
+            z = utils.to_gpu(z)
+        if self.memory_dim is not None:
+            memory_hidden = h.clone()
+
+        h, c = self.de(h, c, x, a, z, m)
+
+        if self.memory_dim is not None:
+            
+
+
+    def run_warmup_phase(self, ):
+        pass
+
+    def forward(self, ):
+        pass
 
 
 class DynamicsEngine(nn.Module):
@@ -30,7 +59,10 @@ class DynamicsEngine(nn.Module):
         self.proj_h = nn.Linear(hidden_dim, self.H.concat_dim)
         self.C = C(hidden_dim, neg_slope, img_size, num_inp_channels)
         self.action_lstm = ActionLSTM(hidden_dim, neg_slope, self.H.concat_dim)
-        
+
+    def init_hidden_and_cell(self, batch_size):
+        # initialize the hidden state and the cell state to be 0s
+        return torch.zeros(batch_size, self.action_lstm.hidden_dim), torch.zeros(batch_size, self.action_lstm.hidden_dim)
         
     def forward(self, h, c, x, a, z, m=None):
         """

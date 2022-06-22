@@ -36,9 +36,10 @@ def train(opts):
         torch.cuda.empty_cache()
 
         for imgs, acts, neg_acts in train_loader:
-            imgs = utils.to_variable(imgs, use_gpu)
-            acts = utils.to_variable(acts, use_gpu)
-            neg_acts = utils.to_variable(neg_acts, use_gpu)
+            if use_gpu:
+                imgs = utils.to_gpu(imgs)
+                acts = utils.to_gpu(acts)
+                neg_acts = utils.to_gpu(neg_acts)
             print(len(imgs), len(acts), len(neg_acts))
             print(imgs[0].shape, acts[0].shape, neg_acts[0].shape)
 
