@@ -30,12 +30,12 @@ class H(nn.Module):
                                  nn.Linear(self.concat_dim, self.concat_dim))
 
 
-    def forward(self, a, z, m=None):
+    def forward(self, a, z, m_vec_prev=None):
         a_emb = self.embed_a(a)
         z_emb = self.embed_z(z)
 
         if self.memory_dim:
-            concats = torch.cat([a_emb, z_emb, m], dim=1)
+            concats = torch.cat([a_emb, z_emb, m_vec_prev], dim=1)
         else:
             concats = torch.cat([a_emb, z_emb], dim=1)
 

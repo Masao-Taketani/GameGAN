@@ -1,3 +1,4 @@
+from ctypes import util
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -16,6 +17,7 @@ class Generator(nn.Module):
     def __init__(self, batch_size, z_dim, hidden_dim, use_gpu, num_a_space, 
                  neg_slope, img_size, num_inp_channels, model_arch_dict,
                  dataset_name='gta', N=21, device='cuda', memory_dim=None):
+                 # when the memory module is not used, set None to memory_dim
         super(Generator, self).__init__()
         self.batch_size = batch_size
         self.z_dist = utils.get_random_noise_dist(z_dim)
@@ -35,34 +37,83 @@ class Generator(nn.Module):
         self.re = RenderingEngine(batch_size, hidden_dim, K, model_arch_dict, 
                                   memory_dim, activation=nn.ReLU)        
 
-    def proceed_step(self, x, h, c, a, M=None, alpha_prev=None):
+    def proceed_step(self, x, h, c, a, M=None, alpha_prev=None, m_vec_prev=None):
         # x: 1 step image
         x = x.detach()
         z = self.z_dist.sample((self.batch_size,))
         if self.use_gpu:
             z = utils.to_gpu(z)
 
-        h_next, c_next = self.de(h, c, x, a, z, M)
+        h_next, c_next = self.de(h, c, x, a, z, m_vec_prev)
 
         if self.memory_dim is not None:
             components, M, alpha = self.memory(h_next, h, a, alpha_prev, M)
+            m_vec = components[0]
         else:
             components = h
 
-        x_next, m, _, _, _ = self.re(components)
+        x_next, fine_masks, maps, base_imgs = self.re(components)
         if self.memory_dim is not None:
             alpha_loss = 0
-            for i in range(1, len(m)):
-                alpha_loss += (m[i].abs().sum() / self.batch_size)
+            for i in range(1, len(fine_masks)):
+                alpha_loss += (fine_masks[i].abs().sum() / self.batch_size)
 
         # everything to the right of c_next belongs to Memory module
-        return x_next, h_next, c_next, M, alpha, m, alpha_loss
+        return x_next, h_next, c_next, z, M, alpha, m_vec, fine_masks, maps, base_imgs, alpha_loss
 
-    def run_warmup_phase(self, ):
-        pass
+    def run_warmup_phase(self, x_real, a, warmup_steps, to_train, M=None, alpha_prev=None, m_vec_prev=None):
+        h, c = self.de.init_hidden_state_and_cell(self.batch_size)
+        h = utils.to_variable(h, self.use_gpu)
+        c = utils.to_variable(c, self.use_gpu)
 
-    def forward(self, ):
-        pass
+        if self.memory_dim is not None:
+            # When the memory is used and M, alpha_prev, and m_vec_prev are None,
+            # initialize them
+            if M is None and alpha_prev is None and m_vec_prev is None:
+                M = self.memory().init_M()
+                alpha_prev = torch.zeros(self.batch_size, self.memory.N ** 2)
+                # put 1.0 in the center of alpha_prev
+                alpha_prev[:, (self.memory.N // 2) * self.memory.N + self.memory.N // 2] = 1.0
+                m_vec_prev = torch.zeros(self.batch_size, self.memory_dim)
+                M = utils.to_variable(M, self.use_gpu)
+                alpha_prev = utils.to_variable(alpha_prev, self.use_gpu)
+                m_vec_prev = utils.to_variable(m_vec_prev, self.use_gpu)
+        
+        x_next = None
+        out_imgs = []
+        hs = []
+        zs = []
+        alphas = []
+        fine_mask_list = []
+        unmasked_base_imgs = []
+        map_list = []
+        alpha_losses = 0
+        for i in range(warmup_steps):
+            # To conduct warmups, always use real images for a specified warm-up step(s)
+            x_i = x_real[i]
+            a_i = a[i]
+            x_next, h, c, z, M, alpha_prev, m_vec_prev, fine_masks, maps, base_imgs, alpha_loss = self.proceed_step(x_i, 
+                                                                                                            h, c, a_i, M, 
+                                                                                                            alpha_prev, 
+                                                                                                            m_vec_prev)
+            out_imgs.append(x_next)
+            hs.append(h)
+            zs.append(z)
+            alphas.append(alpha_prev)
+            fine_mask_list.append(fine_masks)
+            map_list.append(maps)
+            unmasked_base_imgs.append(base_imgs)
+            alpha_losses += alpha_loss
+
+        warmup_h_c = [h, c]
+        # when warm-up is not conducted at all, set x0 as the initial state
+        if x_next is None: x_next = x_real[0]
+
+        return x_next, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, hs, zs, alphas, fine_mask_list, map_list, \
+               unmasked_base_imgs, alpha_losses
+
+    def forward(self, x, a, warmup_steps, to_train, epoch):
+        self.run_warmup_phase(x, a, warmup_steps, to_train)
 
 
 class DynamicsEngine(nn.Module):
@@ -76,11 +127,11 @@ class DynamicsEngine(nn.Module):
         self.C = C(hidden_dim, neg_slope, img_size, num_inp_channels)
         self.action_lstm = ActionLSTM(hidden_dim, neg_slope, self.H.concat_dim)
 
-    def init_hidden_and_cell(self, batch_size):
+    def init_hidden_state_and_cell(self, batch_size):
         # initialize the hidden state and the cell state to be 0s
         return torch.zeros(batch_size, self.action_lstm.hidden_dim), torch.zeros(batch_size, self.action_lstm.hidden_dim)
         
-    def forward(self, h, c, x, a, z, M=None):
+    def forward(self, h, c, x, a, z, m_vec_prev=None):
         """
         arguments:
             h: h_t-1
@@ -88,9 +139,9 @@ class DynamicsEngine(nn.Module):
             x: x_t
             a: a_t
             z: z_t
-            M: M_t-1
+            m_vec_prev: retrieved memory vector in the previous step
         """
-        v_t = self.proj_h(h) * self.H(a, z, M)
+        v_t = self.proj_h(h) * self.H(a, z, m_vec_prev)
         s_t = self.C(x)
         h_t, c_t = self.action_lstm(c, v_t, s_t)
         return h_t, c_t
@@ -117,6 +168,14 @@ class Memory(nn.Module):
                                nn.Linear(memory_dim, 1),
                                nn.Sigmoid())
         self.E = nn.Sequential(nn.Linear(hidden_dim, 3 * memory_dim))
+        # register M state as constant
+        self.register_buffer('M_bias', torch.Tensor(self.N ** 2, self.memory_dim))
+
+    def init_M(self):
+        std = 1 / (np.sqrt(self.N * self.N + self.memory_dim))
+        # nn.init.uniform_ updates self.M_bias tensor
+        nn.init.uniform_(self.M_bias, -std, std)
+        return self.M_bias.clone().repeat(self.batch_size, 1, 1)
 
     def conv2d_for_alpha_and_w(self, alpha_prev, w):
         """
@@ -187,11 +246,13 @@ class Memory(nn.Module):
         erase_vec = erase_add_vecs[:, :self.memory_dim]
         erase_vec = erase_vec.sigmoid()
         add_vec = erase_add_vecs[:, self.memory_dim:2 * self.memory_dim]
-        other_vec = erase_add_vecs[:, 2 * self.memory_dim:]
+        # comp_vec is used for the rendering engine
+        comp_vec = erase_add_vecs[:, 2 * self.memory_dim:]
 
         M = self.write(erase_vec, add_vec, alpha_t, M)
         m_t = self.read(alpha_t, M)
-        return [m_t, other_vec], M, alpha_t
+        # the first list is used for the rendering engine
+        return [m_t, comp_vec], M, alpha_t
 
 
 class RenderingEngine(nn.Module):
@@ -266,7 +327,7 @@ class RenderingEngine(nn.Module):
             for f in self.module_list:
                 h = f(h)
             rendering_img = torch.tanh(h)
-            return rendering_img, None, None, None, None
+            return rendering_img, None, None, None
         else:
             # rendering engine for disentangling static and dynamic components
             # c: [m_t, other_vec]
