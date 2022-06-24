@@ -16,6 +16,7 @@ class TrainOptions:
         self.parser.add_argument('--dirpath', default='datasets/gta/', type=str, help='default datapath')
         self.parser.add_argument('--num_epochs', default=20, type=int, help='total training epochs')
         self.parser.add_argument('--z_dim', default=32, type=int, help='random noise dimension for GAN')
+        self.parser.add_argument('--neg_slope', default=0.2, type=float, help='slope for negative values of leaky ReLU')
     
     def parse(self):
         opts = self.parser.parse_args()

@@ -1,6 +1,5 @@
 import sys
 import os
-from types import DynamicClassAttribute
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import torch
 from torch import nn
@@ -15,32 +14,49 @@ import utils
 class Generator(nn.Module):
 
     def __init__(self, batch_size, z_dim, hidden_dim, use_gpu, num_a_space, 
-                 neg_slope, img_size, num_inp_channels, memory_dim=None):
+                 neg_slope, img_size, num_inp_channels, model_arch_dict,
+                 dataset_name='gta', N=21, device='cuda', memory_dim=None):
         super(Generator, self).__init__()
         self.batch_size = batch_size
         self.z_dist = utils.get_random_noise_dist(z_dim)
         self.hidden_dim = hidden_dim
         self.use_gpu = use_gpu
         self.memory_dim = memory_dim
+        # K: number of components
+        K = 1
 
         self.de = DynamicsEngine(z_dim, hidden_dim, num_a_space, neg_slope, 
                                  img_size, num_inp_channels, memory_dim)
+        if self.memory_dim is not None:
+            self.memory = Memory(batch_size, dataset_name, hidden_dim, 
+                                 num_a_space, neg_slope, memory_dim,
+                                 N, devide=device)
+            K = 2
+        self.re = RenderingEngine(batch_size, hidden_dim, K, model_arch_dict, 
+                                  memory_dim, activation=nn.ReLU)        
 
-
-    def proceed_step(self, x, h, c, a, m):
+    def proceed_step(self, x, h, c, a, M=None, alpha_prev=None):
         # x: 1 step image
         x = x.detach()
         z = self.z_dist.sample((self.batch_size,))
         if self.use_gpu:
             z = utils.to_gpu(z)
-        if self.memory_dim is not None:
-            memory_hidden = h.clone()
 
-        h, c = self.de(h, c, x, a, z, m)
+        h_next, c_next = self.de(h, c, x, a, z, M)
 
         if self.memory_dim is not None:
-            
+            components, M, alpha = self.memory(h_next, h, a, alpha_prev, M)
+        else:
+            components = h
 
+        x_next, m, _, _, _ = self.re(components)
+        if self.memory_dim is not None:
+            alpha_loss = 0
+            for i in range(1, len(m)):
+                alpha_loss += (m[i].abs().sum() / self.batch_size)
+
+        # everything to the right of c_next belongs to Memory module
+        return x_next, h_next, c_next, M, alpha, m, alpha_loss
 
     def run_warmup_phase(self, ):
         pass
@@ -64,7 +80,7 @@ class DynamicsEngine(nn.Module):
         # initialize the hidden state and the cell state to be 0s
         return torch.zeros(batch_size, self.action_lstm.hidden_dim), torch.zeros(batch_size, self.action_lstm.hidden_dim)
         
-    def forward(self, h, c, x, a, z, m=None):
+    def forward(self, h, c, x, a, z, M=None):
         """
         arguments:
             h: h_t-1
@@ -72,9 +88,9 @@ class DynamicsEngine(nn.Module):
             x: x_t
             a: a_t
             z: z_t
-            m: m_t-1
+            M: M_t-1
         """
-        v_t = self.proj_h(h) * self.H(a, z, m)
+        v_t = self.proj_h(h) * self.H(a, z, M)
         s_t = self.C(x)
         h_t, c_t = self.action_lstm(c, v_t, s_t)
         return h_t, c_t
@@ -92,6 +108,7 @@ class Memory(nn.Module):
         self.device = device
         self.use_h_for_gate = use_h_for_gate
         self.devide_scale_for_softmax = devide_scale_for_softmax
+
         self.K = nn.Sequential(nn.Linear(num_a_space, memory_dim),
                                nn.LeakyReLU(neg_slope),
                                nn.Linear(memory_dim, 9))
@@ -244,14 +261,12 @@ class RenderingEngine(nn.Module):
         if self.K == 1:
             # simple rendering engine
             # c: h_t
-            print('sn_linear:', self.sn_linear)
             h = self.sn_linear(c)
             h = h.view(h.shape[0], -1, self.model_arch_dict['first_fmap_size'][0], self.model_arch_dict['first_fmap_size'][1])
-            print('module_list:', self.module_list)
             for f in self.module_list:
                 h = f(h)
             rendering_img = torch.tanh(h)
-            return rendering_img
+            return rendering_img, None, None, None, None
         else:
             # rendering engine for disentangling static and dynamic components
             # c: [m_t, other_vec]
