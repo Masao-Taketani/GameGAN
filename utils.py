@@ -54,3 +54,8 @@ def get_random_noise_dist(z_dim, dist_type='gaussian'):
         raise NotImplementedError
 
     return random_noise_dist
+
+
+def set_grads(model, requires_grad):
+    for p in model.parameters():
+        p.requires_grad_(requires_grad)
