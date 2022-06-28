@@ -29,11 +29,14 @@ class Generator(nn.Module):
 
         self.de = DynamicsEngine(z_dim, hidden_dim, num_a_space, neg_slope, 
                                  img_size, num_inp_channels, memory_dim)
+        
         if self.memory_dim is not None:
             self.memory = Memory(batch_size, dataset_name, hidden_dim, 
                                  num_a_space, neg_slope, memory_dim,
                                  N, devide=device)
             K = 2
+            self.cycle_start_epoch = 0
+
         self.re = RenderingEngine(batch_size, hidden_dim, K, model_arch_dict, 
                                   memory_dim, activation=nn.ReLU)        
 
@@ -61,7 +64,7 @@ class Generator(nn.Module):
         # everything to the right of c_next belongs to Memory module
         return x_next, h_next, c_next, z, M, alpha, m_vec, fine_masks, maps, base_imgs, alpha_loss
 
-    def run_warmup_phase(self, x_real, a, warmup_steps, to_train, M=None, alpha_prev=None, m_vec_prev=None):
+    def run_warmup_phase(self, x_real, a, warmup_steps, M=None, alpha_prev=None, m_vec_prev=None):
         h, c = self.de.init_hidden_state_and_cell(self.batch_size)
         h = utils.to_variable(h, self.use_gpu)
         c = utils.to_variable(c, self.use_gpu)
@@ -81,7 +84,6 @@ class Generator(nn.Module):
         
         x_next = None
         out_imgs = []
-        hs = []
         zs = []
         alphas = []
         fine_mask_list = []
@@ -97,7 +99,6 @@ class Generator(nn.Module):
                                                                                                             alpha_prev, 
                                                                                                             m_vec_prev)
             out_imgs.append(x_next)
-            hs.append(h)
             zs.append(z)
             alphas.append(alpha_prev)
             fine_mask_list.append(fine_masks)
@@ -109,11 +110,57 @@ class Generator(nn.Module):
         # when warm-up is not conducted at all, set x0 as the initial state
         if x_next is None: x_next = x_real[0]
 
-        return x_next, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, hs, zs, alphas, fine_mask_list, map_list, \
+        return x_next, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
                unmasked_base_imgs, alpha_losses
 
-    def forward(self, x, a, warmup_steps, to_train, epoch):
-        self.run_warmup_phase(x, a, warmup_steps, to_train)
+    def forward(self, x_real, a, warmup_steps, epoch):
+        # run warm-up phase
+        x, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
+               unmasked_base_imgs, alpha_losses = self.run_warmup_phase(x_real, a, warmup_steps)
+
+        h, c = warmup_h_c
+        end_steps = len(a) - 1
+        # run post warm-up phase
+        for i in range(warmup_steps, end_steps):
+            x, h, c, z, M, alpha_prev, m_vec_prev, fine_masks, maps, base_imgs, alpha_loss \
+                                    = self.proceed_step(x, h, c, a, M, alpha_prev, m_vec_prev)
+
+            out_imgs.append(x)
+            zs.append(z)
+            alphas.append(alpha_prev)
+            fine_mask_list.append(fine_masks)
+            map_list.append(maps)
+            unmasked_base_imgs.append(base_imgs)
+            alpha_losses += alpha_loss
+        avg_alpha_loss = alpha_losses / end_steps
+
+        reverse_alphas, reverse_imgs, reverse_fine_masks, reverse_base_imgs = [], [], [], []
+        if self.memory_dim is not None and self.opts.cycle_start_epoch <= epoch:
+            # i: len(alphas) - 1, ..., 2, 1, 0
+            for i in range(len(alphas) - 1, -1, -1):
+                # shape of M: (bs, N ** 2, memory_dim)
+                # shape of alpha: (bs, N ** 2)
+                read_vec = self.memory.read(alphas[i], M)
+                reverse_img, reverse_fine_mask, _, reverse_unmasked_base_img = \
+                                                self.re([read_vec, torch.zeros_like(read_vec)])
+                reverse_alphas.append(alphas[i])
+                reverse_imgs.append(reverse_img)
+                reverse_fine_masks.append(reverse_fine_mask)
+                reverse_base_imgs.append(reverse_unmasked_base_img)
+
+        out = {}
+        out['out_imgs'] = out_imgs
+        out['zs'] = zs
+        out['alphas'] = alphas
+        out['fine_masks'] = fine_mask_list
+        out['maps'] = map_list
+        out['unmasked_base_imgs'] = unmasked_base_imgs
+        out['avg_alpha_loss'] = avg_alpha_loss
+        out['reverse_alphas'] = reverse_alphas
+        out['reverse_imgs'] = reverse_imgs
+        out['reverse_fine_masks'] = reverse_fine_masks
+        out['reverse_base_imgs'] = reverse_base_imgs
+        return out
 
 
 class DynamicsEngine(nn.Module):
@@ -318,11 +365,11 @@ class RenderingEngine(nn.Module):
                 # orthogonal initalization is used in the original code
                 nn.init.orthogonal_(module.weight)
 
-    def forward(self, c):
+    def forward(self, components):
         if self.K == 1:
             # simple rendering engine
-            # c: h_t
-            h = self.sn_linear(c)
+            # components: h_t
+            h = self.sn_linear(components)
             h = h.view(h.shape[0], -1, self.model_arch_dict['first_fmap_size'][0], self.model_arch_dict['first_fmap_size'][1])
             for f in self.module_list:
                 h = f(h)
@@ -330,5 +377,9 @@ class RenderingEngine(nn.Module):
             return rendering_img, None, None, None
         else:
             # rendering engine for disentangling static and dynamic components
-            # c: [m_t, other_vec]
-            pass
+            # components: [m_t, other_vec]
+            rendering_img = None
+            fine_masks = None
+            maps = None
+            unmasked_base_imgs = None
+            return rendering_img, fine_masks, maps, unmasked_base_imgs
