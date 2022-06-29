@@ -51,7 +51,7 @@ class Discriminator(nn.Module):
         out['pred_frame_fmaps'] = x_t1_fmaps[:(len(real_frames)-1)*self.batch_size]
         out['act_preds'] = act_preds
         out['full_frame_preds'] = full_frame_preds
-        out['temp_preds'] = tempo_preds
+        out['tempo_preds'] = tempo_preds
         out['neg_act_preds'] = neg_act_preds
         out['act_recon'] = act_recon
         out['z_recon'] = z_recon
