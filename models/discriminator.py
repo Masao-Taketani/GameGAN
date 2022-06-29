@@ -131,6 +131,7 @@ class ActionConditionedDiscriminator(nn.Module):
 
         self.action_emb = nn.Linear(action_space, dim)
         # In the original code, BatchNorm is not used for block1 and block2
+        # in the original paper, conv_for_x_t0_t1 acts as φ and ψ
         self.conv_for_x_t0_t1 = nn.Sequential(SN(nn.Conv2d(hidden_dim, dim,
                                                            kernel_size=kernel_size,
                                                            padding=0)),
@@ -165,7 +166,7 @@ class ActionConditionedDiscriminator(nn.Module):
                 print('neg_act_emb:', neg_act_emb.shape)
             neg_act_preds = self.last_linear_given_act(torch.cat([neg_act_emb, transit_vecs], dim=1))
 
-        # calculate reconstruction for actions
+        # calculate reconstruction of actions and zs for an info loss and action loss 
         act_z_recon = self.reconstruct_action_z(transit_vecs)
         act_recon = act_z_recon[:, :self.action_space]
         z_recon = act_z_recon[:, self.action_space:]

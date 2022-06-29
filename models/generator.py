@@ -20,6 +20,7 @@ class Generator(nn.Module):
                  # when the memory module is not used, set None to memory_dim
         super(Generator, self).__init__()
         self.batch_size = batch_size
+        # z_dist is used to sample z, so that the info loss can be calculated
         self.z_dist = utils.get_random_noise_dist(z_dim)
         self.hidden_dim = hidden_dim
         self.use_gpu = use_gpu

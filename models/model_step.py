@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 import utils
 from criteria import losses
@@ -41,4 +42,19 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train):
         gen_total_tempo_loss += tmp_tempo_loss
     gen_avg_tempo_loss = gen_avg_tempo_loss / hier_levels
 
-    
+    # Action loss
+    a_real = torch.cat(a[:len(gen_out['out_imgs'])], dim=0)
+    _, act_idxes = torch.max(a_real, 1)
+    # As for F.cross_entropy, preds should be logits and targets can be indexes
+    act_loss = F.cross_entropy(disc_out['act_recon'], act_idxes)
+    loss_dict['act_loss'] = act_loss
+
+    # Info loss
+    z_real = torch.cat(gen_out['zs'], dim=0)
+    info_loss = F.mse_loss(disc_out['z_recon'], z_real)
+    loss_dict['info_loss'] = info_loss
+
+    # Image reconstruction loss
+
+
+    # feature reconstruction loss
