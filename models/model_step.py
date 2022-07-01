@@ -54,7 +54,9 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     total_loss += gen_avg_tempo_loss
 
     # Action loss
-    a_real = torch.cat(a[:len(gen_out['out_imgs'])], dim=0)
+    # Here a[:-1] is used for action labels since image differences between t+1 and t are 
+    # based on actions time t = 0, ..., total_steps - 2
+    a_real = torch.cat(a[:-1], dim=0)
     _, act_idxes = torch.max(a_real, 1)
     # As for F.cross_entropy, preds should be logits and targets can be indexes
     act_loss = F.cross_entropy(disc_fake_out['act_recon'], act_idxes)
@@ -127,7 +129,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
                 param.grad.detach()
                 del param.grad
                 param.grad = tempo_grad
-                
+
             torch.cuda.empty_cache()
         else:
             total_loss.backward()
@@ -136,3 +138,62 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
         gen_graphic_optim.step()
     
     return loss_dict, total_loss, gen_out, grads
+
+
+def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim, x_real, a,\
+                           neg_a, warmup_steps,):
+    # make all parameters of the discriminator learnable and of the generator unlearnable
+    utils.set_grads(disc, True)
+    utils.set_grads(gen, False)
+
+    gen.train()
+    disc.train()
+
+    gen_tempo_optim.zero_grad()
+    gen_graphic_optim.zero_grad()
+    disc_optim.zero_grad()
+
+    total_loss = 0
+    loss_dict = {}
+
+    # make all input variables learnable
+    x_real = [tmp.requires_grad_() for tmp in x_real]
+    a = [tmp.requires_grad_() for tmp in a]
+    neg_a = [tmp.requires_grad_() for tmp in neg_a]
+
+    real_inputs = torch.cat(x_real[1:], dim=0).requires_grad_()
+    disc_real_out = disc(real_inputs, a[:-1], warmup_steps, x_real, neg_a)
+
+    # Single image discriminator loss
+    disc_real_single_img_loss = losses.discriminator_hinge_loss(disc_real_out['full_frame_preds'], True)
+    loss_dict['disc_real_single_img_loss'] = disc_real_single_img_loss
+    total_loss += disc_real_single_img_loss
+
+    # Action-conditioned discriminator loss (including negative actions)
+    disc_act_cond_loss = losses.discriminator_hinge_loss(disc_real_out['act_preds'], True)
+    loss_dict['disc_act_cond_loss'] = disc_act_cond_loss
+    total_loss += disc_act_cond_loss
+    disc_neg_act_cond_loss = losses.discriminator_hinge_loss(disc_real_out['neg_act_preds'], False)
+    loss_dict['disc_neg_act_cond_loss'] = disc_neg_act_cond_loss
+    total_loss += disc_neg_act_cond_loss
+
+    # Temporal discriminator
+    # get hierarchical temporal discriminator logits
+    disc_avg_tempo_loss = 0
+    hier_levels = len(disc_real_out['tempo_preds'])
+    for i in range(hier_levels):
+        tmp_tempo_loss = losses.discriminator_hinge_loss(disc_real_out['tempo_preds'][i], True)
+        loss_dict[f'disc_real_tempo_loss{i}'] = tmp_tempo_loss
+        disc_avg_tempo_loss += tmp_tempo_loss
+    disc_avg_tempo_loss = disc_avg_tempo_loss / hier_levels
+    total_loss += disc_avg_tempo_loss
+
+    # Action loss
+    # Here a[:-1] is used for action labels since image differences between t+1 and t are 
+    # based on actions time t = 0, ..., total_steps - 2
+    a_real = torch.cat(a[:-1], dim=0)
+    _, act_idxes = torch.max(a_real, 1)
+    # As for F.cross_entropy, preds should be logits and targets can be indexes
+    act_loss = F.cross_entropy(disc_real_out['act_recon'], act_idxes)
+    loss_dict['act_loss'] = act_loss
+    total_loss += act_loss
