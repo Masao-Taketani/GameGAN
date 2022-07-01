@@ -17,6 +17,12 @@ class TrainOptions:
         self.parser.add_argument('--num_epochs', default=20, type=int, help='total training epochs')
         self.parser.add_argument('--z_dim', default=32, type=int, help='random noise dimension for GAN')
         self.parser.add_argument('--neg_slope', default=0.2, type=float, help='slope for negative values of leaky ReLU')
+        # For loss calculation
+        self.parser.add_argument('--lambda_I', default=30.0, type=float, help='Info loss multiplier')
+        self.parser.add_argument('--lambda_r', default=0.05, type=float, help='Image reconstruction loss multiplier')
+        self.parser.add_argument('--lambda_f', default=10.0, type=float, help='Feature reconstruction loss multiplier')
+        self.parser.add_argument('--lambda_mem_reg', default=0.000075, type=float, help='Memory regularization multiplier')
+        self.parser.add_argument('--lambda_c', default=0.05, type=float, help='Cycle loss multiplier')
     
     def parse(self):
         opts = self.parser.parse_args()

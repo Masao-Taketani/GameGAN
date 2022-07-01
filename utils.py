@@ -59,3 +59,9 @@ def get_random_noise_dist(z_dim, dist_type='gaussian'):
 def set_grads(model, requires_grad):
     for p in model.parameters():
         p.requires_grad_(requires_grad)
+
+
+def save_grad(name, grads):
+    def hook(grad):
+        grads[name] = grad
+    return hook

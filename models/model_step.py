@@ -5,7 +5,9 @@ import utils
 from criteria import losses
 
 
-def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_memory=False):
+def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim, x_real, a,\
+                       warmup_steps, epoch, to_train, opts, use_memory=False):
+    # make all parameters of the genenerator and the discriminator learnable
     utils.set_grads(gen, True)
     utils.set_grads(disc, True)
     
@@ -17,20 +19,28 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_
         gen.eval()
         disc.eval()
 
+    gen_tempo_optim.zero_grad()
+    gen_graphic_optim.zero_grad()
+    disc_optim.zero_grad()
+
+    total_loss = 0
     loss_dict = {}
 
     gen_out = gen(x_real, a, warmup_steps, epoch)
     # shape of input: [(total steps - 1) * bs, 3, h, w]
+    #gen_imgs = torch.cat(gen_out['out_imgs'], dim=0)
     # shape of a[:-1]: [(bs, action_space) * (total steps - 1)]
     disc_fake_out = disc(torch.cat(gen_out['out_imgs'], dim=0), a[:-1], warmup_steps, x_real)
 
     # Single image discriminator loss
     gen_single_img_loss = losses.generator_hinge_loss(disc_fake_out['full_frame_preds'])
     loss_dict['gen_single_img_loss'] = gen_single_img_loss
+    total_loss += gen_single_img_loss
 
     # Action-conditioned discriminator loss
     gen_act_cond_loss = losses.generator_hinge_loss(disc_fake_out['act_preds'])
     loss_dict['gen_act_cond_loss'] = gen_act_cond_loss
+    total_loss += gen_act_cond_loss
 
     # Temporal discriminator
     # get hierarchical temporal discriminator logits
@@ -41,6 +51,7 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_
         loss_dict[f'gen_tempo_loss{i}'] = tmp_tempo_loss
         gen_avg_tempo_loss += tmp_tempo_loss
     gen_avg_tempo_loss = gen_avg_tempo_loss / hier_levels
+    total_loss += gen_avg_tempo_loss
 
     # Action loss
     a_real = torch.cat(a[:len(gen_out['out_imgs'])], dim=0)
@@ -48,11 +59,13 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_
     # As for F.cross_entropy, preds should be logits and targets can be indexes
     act_loss = F.cross_entropy(disc_fake_out['act_recon'], act_idxes)
     loss_dict['act_loss'] = act_loss
+    total_loss += act_loss
 
     # Info loss
     z_real = torch.cat(gen_out['zs'], dim=0)
     info_loss = F.mse_loss(disc_fake_out['z_recon'], z_real)
     loss_dict['info_loss'] = info_loss
+    total_loss += opts.lambda_I * info_loss
 
     # Image reconstruction loss
     # total time steps for x and x_hat: total_steps - 1
@@ -60,6 +73,7 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_
     x_hat = torch.cat(gen_out['out_imgs'], dim=0)
     recon_loss = F.mse_loss(x_hat, x)
     loss_dict['recon_loss'] = recon_loss
+    total_loss += opts.lambda_r * recon_loss
     
     # Feature reconstruction loss
     disc_real_out = disc(x, a[:-1], warmup_steps, x_real)
@@ -69,6 +83,7 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_
     # L1 loss is used in the original code.
     feat_loss = F.l1_loss(feat, feat_hat)
     loss_dict['feat_loss'] = feat_loss
+    total_loss += opts.lambda_f * feat_loss
 
     # Cycle loss
     # Include the loss when the memory module and the specialized rendering engine are used.
@@ -84,4 +99,40 @@ def run_generator_step(gen, disc, x_real, a, warmup_steps, epoch, to_train, use_
         loss_dict['cycle_loss'] = cycle_loss
 
         # Memory regularization
-        loss_dict['memory_reg']
+        avg_alpha_loss = gen_out['avg_alpha_loss']
+        loss_dict['memory_reg'] = avg_alpha_loss
+        total_loss += opts.lambda_mem_reg * avg_alpha_loss
+        total_loss.backward(retain_graph=True)
+
+
+    # If it is to train, update the parameters
+    if to_train:
+        grads = {}
+        x_hat.register_hook(utils.save_grad('gen_adv_input', grads))
+
+        if use_memory:
+            # Caluculate the grads to only update tempo module
+            (total_loss + opts.lambda_c * cycle_loss).backward(retain_graph=True)
+            tempo_grads = []
+            for param in gen_tempo_optim.param_groups[0]['params']:
+                tempo_grads.append(param.grad.clone())
+
+            gen_tempo_optim.zero_grad()
+            gen_graphic_optim.zero_grad()
+
+            total_loss.backward()
+
+            # Replace tempo grads with the calculated grads
+            for param, tempo_grad in zip(gen_tempo_optim.param_groups[0]['params'], tempo_grads):
+                param.grad.detach()
+                del param.grad
+                param.grad = tempo_grad
+                
+            torch.cuda.empty_cache()
+        else:
+            total_loss.backward()
+
+        gen_tempo_optim.step()
+        gen_graphic_optim.step()
+    
+    return loss_dict, total_loss, gen_out, grads
