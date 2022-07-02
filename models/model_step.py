@@ -141,7 +141,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
 
 
 def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim, x_real, a,\
-                           neg_a, warmup_steps, total_steps, opts):
+                           neg_a, warmup_steps, total_steps, opts, gen_out):
     # make all parameters of the discriminator learnable and of the generator unlearnable
     utils.set_grads(disc, True)
     utils.set_grads(gen, False)
@@ -216,3 +216,38 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
 
 
     ### [2] Calculate loss for fake data
+    # since we are not training the generator this time, the input tensor needs to be detached.
+    disc_fake_out = disc(torch.cat(gen_out['out_imgs'], dim=0).detach(), a[:-1], warmup_steps, x_real)
+
+    # Single image discriminator loss
+    disc_fake_single_img_loss = losses.discriminator_hinge_loss(disc_fake_out['full_frame_preds'], False)
+    loss_dict['disc_fake_single_img_loss'] = disc_fake_single_img_loss
+    total_loss += disc_fake_single_img_loss
+
+    # Action-conditioned discriminator loss
+    disc_fake_act_cond_loss = losses.discriminator_hinge_loss(disc_fake_out['act_preds'], False)
+    loss_dict['disc_fake_act_cond_loss'] = disc_fake_act_cond_loss
+    total_loss += disc_fake_act_cond_loss
+
+    # Temporal discriminator
+    # get hierarchical temporal discriminator logits
+    disc_fake_avg_tempo_loss = 0
+    for i in range(hier_levels):
+        tmp_tempo_loss = losses.discriminator_hinge_loss(disc_fake_out['tempo_preds'][i], False)
+        loss_dict[f'disc_fake_tempo_loss{i}'] = tmp_tempo_loss
+        disc_fake_avg_tempo_loss += tmp_tempo_loss
+    disc_fake_avg_tempo_loss = disc_fake_avg_tempo_loss / hier_levels
+    total_loss += disc_fake_avg_tempo_loss
+
+    # Info loss
+    z_real = torch.cat(gen_out['zs'], dim=0)
+    disc_fake_info_loss = F.mse_loss(disc_fake_out['z_recon'], z_real)
+    loss_dict['disc_fake_info_loss'] = disc_fake_info_loss
+    total_loss += disc_fake_info_loss
+
+    # Update the discriminator
+    total_loss.backward()
+    disc_optim.step()
+    utils.set_grads(disc, False)
+
+    return loss_dict
