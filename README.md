@@ -11,3 +11,4 @@
   - [Large Scale GAN Training for High Fidelity Natural Image Synthesis](https://arxiv.org/abs/1809.11096)<br>
 - Repos
   - [Sentdex/GANTheftAuto](https://github.com/Sentdex/GANTheftAuto)<br>
+  - [LMescheder/GAN_stability](https://github.com/LMescheder/GAN_stability)<br>

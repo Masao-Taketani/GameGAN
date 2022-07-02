@@ -141,7 +141,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
 
 
 def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim, x_real, a,\
-                           neg_a, warmup_steps,):
+                           neg_a, warmup_steps, total_steps, opts):
     # make all parameters of the discriminator learnable and of the generator unlearnable
     utils.set_grads(disc, True)
     utils.set_grads(gen, False)
@@ -161,6 +161,8 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     a = [tmp.requires_grad_() for tmp in a]
     neg_a = [tmp.requires_grad_() for tmp in neg_a]
 
+
+    ### [1] Calculate loss for real data
     real_inputs = torch.cat(x_real[1:], dim=0).requires_grad_()
     disc_real_out = disc(real_inputs, a[:-1], warmup_steps, x_real, neg_a)
 
@@ -197,3 +199,20 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     act_loss = F.cross_entropy(disc_real_out['act_recon'], act_idxes)
     loss_dict['act_loss'] = act_loss
     total_loss += act_loss
+
+    # gradient penalty for real data
+    reg = 0
+    reg += 0.33 * utils.compute_grad2(disc_real_out['act_preds'], real_inputs, ns=total_steps).mean()
+    reg += 0.33 * utils.compute_grad2(disc_real_out['full_frame_preds'], real_inputs, ns=total_steps).mean()
+    reg += 0.33 * utils.compute_grad2(disc_real_out['act_recon'], real_inputs, ns=total_steps).mean()
+    reg_temporal = 0
+    for i in range(hier_levels):
+        tmp_loss = utils.compute_grad2(disc_real_out['tempo_preds'][i], real_inputs, ns=total_steps).mean()
+        reg_temporal += tmp_loss
+    reg_temporal = reg_temporal / hier_levels
+    loss_dict['disc_real_tempo_gp'] = reg_temporal
+    loss_dict['disc_real_gp'] = reg
+    loss += reg + opts.gamma * reg_temporal
+
+
+    ### [2] Calculate loss for fake data
