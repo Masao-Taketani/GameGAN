@@ -4,6 +4,9 @@ from torch import distributions
 from torch import autograd
 import numpy as np
 
+from models.generator import Generator
+from models.discriminator import Discriminator
+
 
 def make_channels_first_and_normalize_img(img):
     # convert img from channels last to channels first and normalize it from -1.0 to 1.0
@@ -85,3 +88,40 @@ def compute_grad2(d_out, x_in, allow_unused=False, batch_size=None, use_gpu=True
     grad_dout2 = grad_dout.pow(2)
     reg = grad_dout2.view(batch_size, -1).sum(1) * (ns * 1.0 / 6)
     return reg
+
+
+def create_models(opts, use_gpu, num_action_spaces, img_size, gen_model_arch_dict, device,\
+                  disc_model_arch_dict):
+    gen = Generator(opts.batch_size, opts.z_dim, opts.hidden_dim, use_gpu, num_action_spaces, 
+                    opts.neg_slope, img_size, opts.num_inp_channels, gen_model_arch_dict,
+                    opts.dataset_name, 21, device, opts.memory_dim)
+
+    disc = Discriminator(opts.batch_size, disc_model_arch_dict, num_action_spaces, img_size, 
+                         opts.hidden_dim, opts.neg_slope, opts.temporal_window)
+
+    return gen, disc
+
+
+def get_optim(net, lr, include=None, exclude=None, model_name=''):
+    if type(net) is list:
+        params = net
+    else:
+        params = net.parameters()
+        if exclude is not None:
+            params = []
+            for name, W in net.named_parameters():
+                if exclude in name:
+                    print(model_name + ', Exclude: ' + name)
+                else:
+                    params.append(W)
+                    print(model_name + ', Include: ' + name)
+        if include is not None:
+            params = []
+            for name, W in net.named_parameters():
+                if include in name:
+                    params.append(W)
+                    print(model_name + ', Include: ' + name)
+
+    optimizer = torch.optim.Adam(params, lr=lr, betas=(0.0, 0.9))
+
+    return optimizer

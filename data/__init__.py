@@ -40,7 +40,6 @@ class GTADataset(data.Dataset):
                  dflist[int(num_files * split_ratio):]
         
         for df in dflist:
-            print('df', df)
             dfpath = str(df)
             self.samples.append(dfpath)
 

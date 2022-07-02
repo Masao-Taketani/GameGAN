@@ -39,7 +39,7 @@ class Generator(nn.Module):
             self.cycle_start_epoch = 0
 
         self.re = RenderingEngine(batch_size, hidden_dim, K, model_arch_dict, 
-                                  memory_dim, activation=nn.ReLU)        
+                                  memory_dim, nn.ReLU(inplace=False))        
 
     def proceed_step(self, x, h, c, a, M=None, alpha_prev=None, m_vec_prev=None):
         # x: 1 step image
@@ -318,7 +318,7 @@ class RenderingEngine(nn.Module):
          'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
          'attention': {16: False, 32: False, 64: True}}
         when K=2
-        {'in_channels': [256, 128, 64], 'first_fmap_size': (8, 8), 'out_channels': [128, 64, 32], 
+        {'img_size': (64, 64), 'first_fmap_size': (8, 8), 'in_channels': [256, 128, 64], 'out_channels': [128, 64, 32], 
         'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
         'attention': {16: False, 32: False, 64: True}}
         [gta]

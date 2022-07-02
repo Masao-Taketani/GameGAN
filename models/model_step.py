@@ -6,7 +6,7 @@ from criteria import losses
 
 
 def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim, x_real, a,\
-                       warmup_steps, epoch, to_train, opts, use_memory=False):
+                       warmup_steps, epoch, to_train, opts):
     # make all parameters of the genenerator and the discriminator learnable
     utils.set_grads(gen, True)
     utils.set_grads(disc, True)
@@ -91,7 +91,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     # Include the loss when the memory module and the specialized rendering engine are used.
     # The loss is not used to update the rendering engine. Instead, it is used to update the
     # memory and dynamics engine modules for better temporal consistency.
-    if use_memory:
+    if opts.memory_dim:
         reverse_gen_imgs = torch.cat(gen_out['reverse_imgs'][::-1], dim=0)
         num_reverse = len(gen_out['reverse_imgs'])
         reverse_reals = [comp[0] for comp in gen_out['unmasked_base_imgs']]
@@ -112,7 +112,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
         grads = {}
         x_hat.register_hook(utils.save_grad('gen_adv_input', grads))
 
-        if use_memory:
+        if opts.memory_dim:
             # Caluculate the grads to only update tempo module
             (total_loss + opts.lambda_c * cycle_loss).backward(retain_graph=True)
             tempo_grads = []
@@ -141,7 +141,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
 
 
 def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim, x_real, a,\
-                           neg_a, warmup_steps, total_steps, opts, gen_out):
+                           neg_a, warmup_steps, opts, gen_out):
     # make all parameters of the discriminator learnable and of the generator unlearnable
     utils.set_grads(disc, True)
     utils.set_grads(gen, False)
@@ -202,12 +202,12 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
 
     # gradient penalty for real data
     reg = 0
-    reg += 0.33 * utils.compute_grad2(disc_real_out['act_preds'], real_inputs, ns=total_steps).mean()
-    reg += 0.33 * utils.compute_grad2(disc_real_out['full_frame_preds'], real_inputs, ns=total_steps).mean()
-    reg += 0.33 * utils.compute_grad2(disc_real_out['act_recon'], real_inputs, ns=total_steps).mean()
+    reg += 0.33 * utils.compute_grad2(disc_real_out['act_preds'], real_inputs, ns=opts.total_steps).mean()
+    reg += 0.33 * utils.compute_grad2(disc_real_out['full_frame_preds'], real_inputs, ns=opts.total_steps).mean()
+    reg += 0.33 * utils.compute_grad2(disc_real_out['act_recon'], real_inputs, ns=opts.total_steps).mean()
     reg_temporal = 0
     for i in range(hier_levels):
-        tmp_loss = utils.compute_grad2(disc_real_out['tempo_preds'][i], real_inputs, ns=total_steps).mean()
+        tmp_loss = utils.compute_grad2(disc_real_out['tempo_preds'][i], real_inputs, ns=opts.total_steps).mean()
         reg_temporal += tmp_loss
     reg_temporal = reg_temporal / hier_levels
     loss_dict['disc_real_tempo_gp'] = reg_temporal

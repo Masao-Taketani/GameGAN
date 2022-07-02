@@ -57,8 +57,9 @@ class C(nn.Module):
     def __init__(self, hidden_dim, neg_slope, img_size, num_inp_channels):
         """
         img_size:
-            64x64: 5 layered convs(for VizDoom)
-            84x84: 6 layered convs(for Pacman)
+            (64, 64): 5 layered convs(for VizDoom)
+            (84, 84): 6 layered convs(for Pacman)
+            (48, 80): 7 layered convs(for gta)
         """
         super(C, self).__init__()
         model_type = self.check_conv_type(img_size)
@@ -107,21 +108,19 @@ class C(nn.Module):
                      Reshape((-1, 6 * 10 * (hidden_dim // 8))),
                      nn.Linear( 6 * 10 * (hidden_dim // 8), hidden_dim),
                      nn.LeakyReLU(neg_slope)]
-
         
         self.img_encoder = nn.Sequential(*convs)
 
     def check_conv_type(self, img_size):
-        img_shape = [int(size) for size in img_size.split('x')]
-        if img_shape[0] == img_shape[1]:
-            if img_shape[0] == 64:
+        if img_size[0] == img_size[1]:
+            if img_size[0] == 64:
                 model_type = 'vizdoom'
-            elif img_shape[0] == 84:
+            elif img_size[0] == 84:
                 model_type = 'pacman'
             else:
                 raise ValueError(f"img_size {img_size} cannot be accepted")
         else:
-            if img_shape[0] == 48 and img_shape[1] == 80:
+            if img_size[0] == 48 and img_size[1] == 80:
                 model_type = 'gta'
             else:
                 raise ValueError(f"img_size {img_size} cannot be accepted")
@@ -271,3 +270,41 @@ class DResBlock(nn.Module):
             if self.use_1x1conv: inp = self.sn_conv2d1x1(inp)
             
         return x + inp
+
+
+def get_gen_model_arch_dict(data_name, num_components):
+    if data_name == 'vizdoom':
+        if num_components == 1:
+            return {'img_size': (64, 64), 'first_fmap_size': (8, 8), 'in_channels': [512, 256, 128],
+                    'out_channels': [256, 128, 64], 'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
+                    'attention': {16: False, 32: False, 64: True}}
+        elif num_components == 2:
+            return {'img_size': (64, 64), 'first_fmap_size': (8, 8),  'in_channels': [256, 128, 64],
+                    'out_channels': [128, 64, 32], 'upsample': [2, 2, 2], 'resolution': [16, 32, 64], 
+                    'attention': {16: False, 32: False, 64: True}}
+    elif data_name == 'gta':
+        if num_components == 1:
+            return {'img_size': (48, 80), 'first_fmap_size': (6, 10), 'in_channels': [768, 384, 192, 96, 96],
+                    'out_channels': [384, 192, 96, 96, 96], 'upsample': [2, 2, 2, 1, 1], 
+                    'resolution': [16, 32, 64, 128, 256], 
+                    'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
+        elif num_components == 2:
+            return {'img_size': (48, 80), 'first_fmap_size': (6, 10), 'in_channels': [256, 128, 64, 32, 32], 
+                    'out_channels': [128, 64, 32, 32, 32], 'upsample': [2, 2, 2, 1, 1], 
+                    'resolution': [16, 32, 64, 128, 256], 
+                    'attention': {16: False, 32: True, 64: True, 128: False, 256: False}}
+
+
+def get_disc_model_arch_dict(data_name):
+    if data_name == 'vizdoom':
+        return {'in_channels': [3, 16, 32, 64, 128], 
+                'out_channels': [16, 32, 64, 128, 256], 
+                'downsample': [True, True, True, True, False], 
+                'resolution': [32, 16, 8, 4, 4], 
+                'attention': {4: False, 8: False, 16: False, 32: False, 64: True}}
+    elif data_name == 'gta':
+        return {'in_channels':   [3, 16, 32, 64, 64, 64, 128, 128], 
+                'out_channels': [16, 32, 64, 64, 64, 128, 128, 256], 
+                'downsample': [True, True, False, False, True, True, False, False], 
+                'resolution': [64, 32, 16, 8, 4, 4, 4, 4], 
+                'attention': {4: False, 8: False, 16: False, 32: True, 64: True, 128: False}}
