@@ -226,7 +226,7 @@ class SA(nn.Module):
         # matmul: (bs, N, c/8) x (bs, c/8, N/4) -> (bs, N, N/4)
         matmul = torch.bmm(f.transpose(1, 2), g)
         # beta: attention map, shape: (bs, N, N/4)
-        beta = F.softmax(matmul)
+        beta = F.softmax(matmul, -1)
         # mutmul: (bs, c/2, N/4) x (bs, N/4, N) -> (bs, c/2, N)
         matmul = torch.bmm(h, beta.transpose(1, 2))
         # As for input shape, before reshape: (bs, c//2, N), after reshape: (bs, c//2, h, w)

@@ -164,7 +164,7 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
 
     ### [1] Calculate loss for real data
     real_inputs = torch.cat(x_real[1:], dim=0).requires_grad_()
-    disc_real_out = disc(real_inputs, a[:-1], warmup_steps, x_real, neg_a)
+    disc_real_out = disc(real_inputs, a[:-1], warmup_steps, x_real, neg_a[:-1])
 
     # Single image discriminator loss
     disc_real_single_img_loss = losses.discriminator_hinge_loss(disc_real_out['full_frame_preds'], True)
@@ -212,7 +212,7 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     reg_temporal = reg_temporal / hier_levels
     loss_dict['disc_real_tempo_gp'] = reg_temporal
     loss_dict['disc_real_gp'] = reg
-    loss += reg + opts.gamma * reg_temporal
+    total_loss += reg + opts.gamma * reg_temporal
 
 
     ### [2] Calculate loss for fake data

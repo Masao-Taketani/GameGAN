@@ -100,7 +100,10 @@ def create_models(opts, use_gpu, num_action_spaces, img_size, gen_model_arch_dic
     disc = Discriminator(opts.batch_size, disc_model_arch_dict, num_action_spaces, img_size, 
                          opts.hidden_dim, opts.neg_slope, opts.temporal_window)
 
-    return gen, disc
+    if use_gpu:
+        return gen.cuda(), disc.cuda()
+    else:
+        return gen, disc
 
 
 def get_optim(net, lr, include=None, exclude=None, model_name=''):

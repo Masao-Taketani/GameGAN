@@ -28,7 +28,6 @@ def train(opts):
     gen_model_arch_dict = get_gen_model_arch_dict(opts.dataset_name, num_components)
     disc_model_arch_dict = get_disc_model_arch_dict(opts.dataset_name)
     img_size = [int(size) for size in opts.img_size.split('x')]
-    print('img_size', img_size)
 
     gen, disc = utils.create_models(opts, use_gpu, num_action_spaces, img_size, 
                                     gen_model_arch_dict, device, disc_model_arch_dict)

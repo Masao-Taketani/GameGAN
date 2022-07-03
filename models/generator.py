@@ -46,7 +46,6 @@ class Generator(nn.Module):
         z = self.z_dist.sample((self.batch_size,))
         if self.use_gpu:
             z = utils.to_gpu(z)
-
         h_next, c_next = self.de(h, c, x, a, z, m_vec_prev)
 
         if self.memory_dim is not None:
@@ -54,10 +53,13 @@ class Generator(nn.Module):
             m_vec = components[0]
         else:
             components = h
+            alpha = None
+            m_vec = None
 
         x_next, fine_masks, maps, base_imgs = self.re(components)
+
+        alpha_loss = 0
         if self.memory_dim is not None:
-            alpha_loss = 0
             for i in range(1, len(fine_masks)):
                 alpha_loss += (fine_masks[i].abs().sum() / self.batch_size)
 
@@ -123,7 +125,7 @@ class Generator(nn.Module):
         # run post warm-up phase
         for i in range(warmup_steps, end_steps):
             x, h, c, z, M, alpha_prev, m_vec_prev, fine_masks, maps, base_imgs, alpha_loss \
-                                    = self.proceed_step(x, h, c, a, M, alpha_prev, m_vec_prev)
+                                    = self.proceed_step(x, h, c, a[i], M, alpha_prev, m_vec_prev)
 
             out_imgs.append(x)
             zs.append(z)

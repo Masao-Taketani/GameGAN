@@ -21,6 +21,7 @@ class Discriminator(nn.Module):
 
         self.single_disc = SingleImageDiscriminator(model_arch_dict)
         self.act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope)
+        self.tempo_disc = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
 
     def forward(self, imgs, actions, num_warmup_frames, real_frames, neg_actions=None):
         # shape of imgs: (total steps - 1) * bs, c, h, w)
@@ -45,7 +46,7 @@ class Discriminator(nn.Module):
 
         act_preds, neg_act_preds, act_recon, z_recon = self.act_cond_disc(actions, x_t0_fmaps, x_t1_fmaps, neg_actions)
 
-        tempo_preds = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
+        tempo_preds = self.tempo_disc(bottom_fmaps, num_warmup_frames)
 
         out = {}
         out['pred_frame_fmaps'] = x_t1_fmaps[:(len(real_frames)-1)*self.batch_size]
