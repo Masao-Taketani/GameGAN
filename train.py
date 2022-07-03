@@ -87,32 +87,31 @@ def train(opts):
             #break
             
             # For logging
-            if num_steps % 2000 == 0:
-                with torch.no_grad():
-                    if step == 0:
-                        utils.add_histogram({'gen': gen, 'disc': disc}, writer, num_steps)
+            with torch.no_grad():
+                if step == 0:
+                    utils.add_histogram({'gen': gen, 'disc': disc}, writer, num_steps)
 
-                    loss_str = 'Generator [epoch %d, step %d / %d] ' % (epoch, step, train_len)
-                    for k, v in gen_loss_dict.items():
-                        if not (type(v) is float):
-                            if (step % log_iter) == 0:
-                                writer.add_scalar('losses/' + k, v.data.item(), num_steps)
-                            loss_str += k + ': ' + str(v.data.item()) + ', '
-                    print(loss_str)
+                loss_str = 'Generator [epoch %d, step %d / %d] ' % (epoch, step, train_len)
+                for k, v in gen_loss_dict.items():
+                    if not (type(v) is float):
+                        if (step % log_iter) == 0:
+                            writer.add_scalar('losses/' + k, v.data.item(), num_steps)
+                        loss_str += k + ': ' + str(v.data.item()) + ', '
+                print(loss_str)
 
                 if (step % log_iter) == 0:
                     # logging visualization
                     utils.draw_output(gen_out, imgs, warmup_steps, opts, vutils, vis_num_row, normalize, writer,
-                                      num_steps,
-                                      num_vis, tag='trn_images')
+                                        num_steps,
+                                        num_vis, tag='trn_images')
 
-                loss_str = 'Discriminator [epoch %d, step %d / %d] ' % (epoch, step, train_len)
-                for k, v in disc_loss_dict.items():
-                    if not type(v) is float:
-                        if (step % log_iter) == 0:
-                            writer.add_scalar('losses/' + k, v.data.item(), it)
-                        loss_str += k + ': ' + str(v.data.item()) + ', '
-                print(loss_str)
+            loss_str = 'Discriminator [epoch %d, step %d / %d] ' % (epoch, step, train_len)
+            for k, v in disc_loss_dict.items():
+                if not type(v) is float:
+                    if (step % log_iter) == 0:
+                        writer.add_scalar('losses/' + k, v.data.item(), num_steps)
+                    loss_str += k + ': ' + str(v.data.item()) + ', '
+            print(loss_str)
             del gen_loss_dict, gen_total_loss, gen_out, grads, imgs, acts, neg_acts, disc_loss_dict
 
         print('Validation epoch %d...' % epoch)

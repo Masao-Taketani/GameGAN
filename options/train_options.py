@@ -12,7 +12,7 @@ class TrainOptions:
         self.parser.add_argument('--log_dir', default='logs', type=str, help='specify a log directory')
         self.parser.add_argument('--num_workers', default=1, type=int, help='used for dataloader')
         self.parser.add_argument('--pin_memory', default=False, action="store_true", help='used for dataloader')
-        self.parser.add_argument('--split_ratio', default=1, type=float, help='ratio for train and valid')
+        self.parser.add_argument('--split_ratio', default=0.9, type=float, help='ratio for train and valid')
         self.parser.add_argument('--datapath', default='datasets/gta/', type=str, help='default datapath')
         self.parser.add_argument('--num_epochs', default=20, type=int, help='total training epochs')
         self.parser.add_argument('--penultimate_tanh', action='store_true', default=True)

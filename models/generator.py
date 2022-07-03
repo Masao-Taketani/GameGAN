@@ -1,5 +1,6 @@
 import sys
 import os
+from unittest.mock import NonCallableMagicMock
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import torch
 from torch import nn
@@ -376,12 +377,12 @@ class RenderingEngine(nn.Module):
             for f in self.module_list:
                 h = f(h)
             rendering_img = torch.tanh(h)
-            return rendering_img, None, None, None
+            return rendering_img, [], [], []
         else:
             # rendering engine for disentangling static and dynamic components
             # components: [m_t, other_vec]
-            rendering_img = None
+            rendering_img = 0
             fine_masks = None
-            maps = None
-            unmasked_base_imgs = None
+            maps = NonCallableMagicMock
+            unmasked_base_imgs = []
             return rendering_img, fine_masks, maps, unmasked_base_imgs

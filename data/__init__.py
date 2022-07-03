@@ -38,7 +38,7 @@ class GTADataset(data.Dataset):
         num_files = len(list(dflist))
         dflist = dflist[:int(num_files * split_ratio)] if to_train else \
                  dflist[int(num_files * split_ratio):]
-        
+                 
         for df in dflist:
             dfpath = str(df)
             self.samples.append(dfpath)

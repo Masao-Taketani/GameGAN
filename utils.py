@@ -1,4 +1,5 @@
 import torch
+import torch.functional as F
 from torch.autograd import Variable
 from torch import distributions
 from torch import autograd
@@ -152,7 +153,7 @@ def save_optim(fname, epoch, optG_temporal, optG_graphic, optD):
     torch.save(outdict, fname)
 
 
-def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, logger, it, num_vis, tag='images'):
+def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, logger, it, num_vis, tag='images', N_squared=441):
     img_size = opts.img_size
     _, _, h, w = states[0].size()
 
@@ -169,12 +170,12 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
         logger.add_image(tag + '_output/WARMUPImage', x, it)
 
     states_ = torch.cat(states[warm_up:], dim=1)
-    states_ = states_[0:num_vis].view((opts.num_steps - warm_up) * num_vis, opts.num_inp_channels, h, w)
+    states_ = states_[0:num_vis].view((opts.total_steps - warm_up) * num_vis, opts.num_inp_channels, h, w)
     if opts.penultimate_tanh:
         states_ = rescale(states_)
     states_ = torch.clamp(states_, 0, 1.0)
     x = vutils.make_grid(
-        states_, nrow=(opts.num_steps - warm_up) // vis_num_row,
+        states_, nrow=(opts.total_steps - warm_up) // vis_num_row,
         normalize=normalize, scale_each=normalize
     )
     logger.add_image(tag + '_output/GTImage', x, it)
@@ -194,8 +195,8 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
 
 
 
-    mem_h = int(math.sqrt(opts.memory_h))
-    mem_w = opts.memory_h // mem_h
+    mem_h = int(math.sqrt(N_squared))
+    mem_w = N_squared // mem_h
 
     if 'reverse_out_imgs' in gout and len(gout['reverse_out_imgs']) > 0:
 
@@ -221,7 +222,7 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
         )
         logger.add_image(tag + '_rev_output/RevOutputImage', x, it)
 
-        if opts.do_memory:
+        if opts.memory_dim:
             rev_alpha = torch.clamp(torch.cat(gout['reverse_alphas'], dim=1), 0, 1.0)
             rev_alpha = rev_alpha[0:num_vis].view(len(gout['reverse_alphas']) * num_vis, 1, mem_w, mem_h)
             x = vutils.make_grid(
@@ -237,7 +238,7 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
                 )
                 logger.add_image(tag + '_rev_memory/sec_reverse_alphas', x, it)
 
-    if opts.do_memory:
+    if opts.memory_dim:
         alpha = torch.clamp(torch.cat(gout['alphas'], dim=1), 0, 1.0)
         alpha = alpha[0:num_vis].view(len(gout['alphas']) * num_vis, 1, mem_w, mem_h)
         x = vutils.make_grid(
@@ -255,7 +256,7 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
             logger.add_image(tag + '_memory/kernels', x, it)
 
     maps = gout['fine_masks']
-
+    
     if len(maps) > 0:
         for cur_component in range(len(gout['unmasked_base_imgs'][0])):
             gather_recon_maps = []
