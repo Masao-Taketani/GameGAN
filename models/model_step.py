@@ -26,7 +26,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     total_loss = 0
     loss_dict = {}
 
-    gen_out = gen(x_real, a, warmup_steps, epoch)
+    gen_out = gen(x_real, a, warmup_steps)
     # shape of input: [(total steps - 1) * bs, 3, h, w]
     #gen_imgs = torch.cat(gen_out['out_imgs'], dim=0)
     # shape of a[:-1]: [(bs, action_space) * (total steps - 1)]

@@ -9,10 +9,11 @@ class TrainOptions:
 
     def set_opts(self):
         self.parser.add_argument('--dataset_name', default='gta', type=str, help='select dataset among gta, vizdoom')
+        self.parser.add_argument('--log_dir', default='logs', type=str, help='specify a log directory')
         self.parser.add_argument('--num_workers', default=1, type=int, help='used for dataloader')
         self.parser.add_argument('--pin_memory', default=False, action="store_true", help='used for dataloader')
         self.parser.add_argument('--split_ratio', default=1, type=float, help='ratio for train and valid')
-        self.parser.add_argument('--dirpath', default='datasets/gta/', type=str, help='default datapath')
+        self.parser.add_argument('--datapath', default='datasets/gta/', type=str, help='default datapath')
         self.parser.add_argument('--num_epochs', default=20, type=int, help='total training epochs')
         # model hyper-parameters
         self.parser.add_argument('--img_size', default='48x80', type=str, help='gta: 48x80, vizdoom: 64x64')

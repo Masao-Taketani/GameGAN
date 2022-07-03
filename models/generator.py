@@ -1,4 +1,3 @@
-from ctypes import util
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -114,7 +113,7 @@ class Generator(nn.Module):
         return x_next, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
                unmasked_base_imgs, alpha_losses
 
-    def forward(self, x_real, a, warmup_steps, epoch):
+    def forward(self, x_real, a, warmup_steps):
         # run warm-up phase
         x, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
                unmasked_base_imgs, alpha_losses = self.run_warmup_phase(x_real, a, warmup_steps)
@@ -135,17 +134,17 @@ class Generator(nn.Module):
             alpha_losses += alpha_loss
         avg_alpha_loss = alpha_losses / end_steps
 
-        reverse_alphas, reverse_imgs, reverse_fine_masks, reverse_base_imgs = [], [], [], []
-        if self.memory_dim is not None and self.opts.cycle_start_epoch <= epoch:
+        reverse_alphas, reverse_out_imgs, reverse_fine_masks, reverse_base_imgs = [], [], [], []
+        if self.memory_dim is not None:
             # i: len(alphas) - 1, ..., 2, 1, 0
             for i in range(len(alphas) - 1, -1, -1):
                 # shape of M: (bs, N ** 2, memory_dim)
                 # shape of alpha: (bs, N ** 2)
                 read_vec = self.memory.read(alphas[i], M)
-                reverse_img, reverse_fine_mask, _, reverse_unmasked_base_img = \
+                _, reverse_fine_mask, _, reverse_unmasked_base_img = \
                                                 self.re([read_vec, torch.zeros_like(read_vec)])
                 reverse_alphas.append(alphas[i])
-                reverse_imgs.append(reverse_img)
+                reverse_out_imgs.append(reverse_unmasked_base_img[2] * fine_mask_list[i][0])
                 reverse_fine_masks.append(reverse_fine_mask)
                 reverse_base_imgs.append(reverse_unmasked_base_img)
 
@@ -158,7 +157,7 @@ class Generator(nn.Module):
         out['unmasked_base_imgs'] = unmasked_base_imgs
         out['avg_alpha_loss'] = avg_alpha_loss
         out['reverse_alphas'] = reverse_alphas
-        out['reverse_imgs'] = reverse_imgs
+        out['reverse_out_imgs'] = reverse_out_imgs
         out['reverse_fine_masks'] = reverse_fine_masks
         out['reverse_base_imgs'] = reverse_base_imgs
         return out
