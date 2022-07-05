@@ -194,7 +194,7 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
     logger.add_image(tag + '_output/GenImage', x, it)
 
 
-
+    # Memory-related part from here
     mem_h = int(math.sqrt(N_squared))
     mem_w = N_squared // mem_h
 
@@ -342,4 +342,9 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
 
 
 def rescale(x):
+    # from (-1, 1) to (0, 1)
     return (x + 1) * 0.5
+
+
+def update_warmup_steps(opts, epoch):
+    return max(1, math.ceil(opts.warmup_steps * (1 - epoch * 1 / opts.num_epochs)))

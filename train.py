@@ -19,7 +19,7 @@ def train(opts):
     device = torch.device('cuda:0') if use_gpu else torch.device('cpu')
     torch.backends.cudnn.benchmark = True
 
-    writer = SummaryWriter()
+    writer = SummaryWriter(opts.log_dir)
 
     num_components = 2 if opts.memory_dim is not None else 1
     if opts.dataset_name == 'gta':
@@ -50,7 +50,6 @@ def train(opts):
                                           opts.split_ratio, opts.datapath)
     
     # set initial warm-up steps
-    warmup_steps = opts.warmup_steps
     num_steps = 0
     vis_num_row = 1
     if opts.total_steps > 29:
@@ -60,6 +59,7 @@ def train(opts):
 
     for epoch in range(opts.num_epochs):
         print(f'[epoch {epoch}]')
+        updated_warmup_steps = utils.update_warmup_steps(opts, epoch)
         data_iters = []
         data_iters.append(iter(train_loader))
         train_len = len(data_iters[0])
@@ -78,11 +78,11 @@ def train(opts):
 
             gen_loss_dict, gen_total_loss, gen_out, grads = run_generator_step(gen, disc, gen_tempo_optim,\
                                                                                gen_graphic_optim, disc_optim,
-                                                                               imgs, acts, warmup_steps, epoch,\
+                                                                               imgs, acts, updated_warmup_steps, epoch,\
                                                                                True, opts)
             
             disc_loss_dict = run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim,\
-                                                   imgs, acts, neg_acts, warmup_steps, opts, gen_out)
+                                                   imgs, acts, neg_acts, updated_warmup_steps, opts, gen_out)
             # (tmp) for debugging
             #break
             
@@ -101,7 +101,7 @@ def train(opts):
 
                 if (step % log_iter) == 0:
                     # logging visualization
-                    utils.draw_output(gen_out, imgs, warmup_steps, opts, vutils, vis_num_row, normalize, writer,
+                    utils.draw_output(gen_out, imgs, updated_warmup_steps, opts, vutils, vis_num_row, normalize, writer,
                                         num_steps,
                                         num_vis, tag='trn_images')
 
@@ -133,11 +133,11 @@ def train(opts):
                 with torch.no_grad():
                     gen_loss_dict, gen_total_loss, gen_out, _ = run_generator_step(gen, disc, gen_tempo_optim,\
                                                                                gen_graphic_optim, disc_optim,
-                                                                               imgs, acts, warmup_steps, epoch,\
+                                                                               imgs, acts, updated_warmup_steps, epoch,\
                                                                                False, opts)
 
                     writer.add_scalar('val_losses/recon_loss', gen_loss_dict['recon_loss'], num_steps)
-                    utils.draw_output(gen_loss_dict, imgs, warmup_steps, opts, vutils, vis_num_row, normalize, writer, num_steps,
+                    utils.draw_output(gen_loss_dict, imgs, updated_warmup_steps, opts, vutils, vis_num_row, normalize, writer, num_steps,
                                         num_vis, tag='val_images')
                 del gen_loss_dict, gen_total_loss, gen_out
             else:
