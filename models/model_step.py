@@ -107,9 +107,9 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
         total_loss.backward(retain_graph=True)
 
 
+    grads = {}
     # If it is to train, update the parameters
     if to_train:
-        grads = {}
         x_hat.register_hook(utils.save_grad('gen_adv_input', grads))
 
         if opts.memory_dim:

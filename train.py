@@ -50,25 +50,28 @@ def train(opts):
                                           opts.split_ratio, opts.datapath)
     
     # set initial warm-up steps
-    num_steps = 0
+    num_train_steps = 0
+    num_val_steps = 0
     vis_num_row = 1
     if opts.total_steps > 29:
         vis_num_row = 3
     num_vis = 1
     normalize = True
 
+    data_iters = []
+    data_iters.append(iter(train_loader))
+    train_len = len(data_iters[0])
+    log_iter = max(1,int(train_len // 10))
+    del data_iters
+
     for epoch in range(opts.num_epochs):
         print(f'[epoch {epoch}]')
         updated_warmup_steps = utils.update_warmup_steps(opts, epoch)
-        data_iters = []
-        data_iters.append(iter(train_loader))
-        train_len = len(data_iters[0])
-        log_iter = max(1,int(train_len // 10))
         # clear gpu memory cache
         torch.cuda.empty_cache()
 
         for step, (imgs, acts, neg_acts) in enumerate(train_loader):
-            num_steps += epoch * train_len + step
+            num_train_steps += 1
             if use_gpu:
                 imgs = utils.to_gpu(imgs)
                 acts = utils.to_gpu(acts)
@@ -89,40 +92,39 @@ def train(opts):
             # For logging
             with torch.no_grad():
                 if step == 0:
-                    utils.add_histogram({'gen': gen, 'disc': disc}, writer, num_steps)
+                    utils.add_histogram({'gen': gen, 'disc': disc}, writer, num_train_steps)
 
                 loss_str = 'Generator [epoch %d, step %d / %d] ' % (epoch, step, train_len)
                 for k, v in gen_loss_dict.items():
                     if not (type(v) is float):
                         if (step % log_iter) == 0:
-                            writer.add_scalar('losses/' + k, v.data.item(), num_steps)
+                            writer.add_scalar('losses/' + k, v.data.item(), num_train_steps)
                         loss_str += k + ': ' + str(v.data.item()) + ', '
                 print(loss_str)
 
                 if (step % log_iter) == 0:
                     # logging visualization
                     utils.draw_output(gen_out, imgs, updated_warmup_steps, opts, vutils, vis_num_row, normalize, writer,
-                                        num_steps,
+                                        num_train_steps,
                                         num_vis, tag='trn_images')
+            
 
             loss_str = 'Discriminator [epoch %d, step %d / %d] ' % (epoch, step, train_len)
             for k, v in disc_loss_dict.items():
                 if not type(v) is float:
                     if (step % log_iter) == 0:
-                        writer.add_scalar('losses/' + k, v.data.item(), num_steps)
+                        writer.add_scalar('losses/' + k, v.data.item(), num_train_steps)
                     loss_str += k + ': ' + str(v.data.item()) + ', '
             print(loss_str)
             del gen_loss_dict, gen_total_loss, gen_out, grads, imgs, acts, neg_acts, disc_loss_dict
+            break
 
         print('Validation epoch %d...' % epoch)
-        data_iters = []
-        data_iters.append(iter(val_loader))
-        val_len = len(data_iters[0])
         torch.cuda.empty_cache()
 
         max_vis = 10
         for step, (imgs, acts, neg_acts) in enumerate(val_loader):
-            num_steps += epoch * val_len + step
+            num_val_steps += 1
             if use_gpu:
                 imgs = utils.to_gpu(imgs)
                 acts = utils.to_gpu(acts)
@@ -136,8 +138,8 @@ def train(opts):
                                                                                imgs, acts, updated_warmup_steps, epoch,\
                                                                                False, opts)
 
-                    writer.add_scalar('val_losses/recon_loss', gen_loss_dict['recon_loss'], num_steps)
-                    utils.draw_output(gen_loss_dict, imgs, updated_warmup_steps, opts, vutils, vis_num_row, normalize, writer, num_steps,
+                    writer.add_scalar('val_losses/recon_loss', gen_loss_dict['recon_loss'], num_val_steps)
+                    utils.draw_output(gen_out, imgs, updated_warmup_steps, opts, vutils, vis_num_row, normalize, writer, num_val_steps,
                                         num_vis, tag='val_images')
                 del gen_loss_dict, gen_total_loss, gen_out
             else:
