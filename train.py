@@ -117,7 +117,6 @@ def train(opts):
                     loss_str += k + ': ' + str(v.data.item()) + ', '
             print(loss_str)
             del gen_loss_dict, gen_total_loss, gen_out, grads, imgs, acts, neg_acts, disc_loss_dict
-            break
 
         print('Validation epoch %d...' % epoch)
         torch.cuda.empty_cache()

@@ -58,10 +58,12 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     # based on actions time t = 0, ..., total_steps - 2
     a_real = torch.cat(a[:-1], dim=0)
     _, act_idxes = torch.max(a_real, 1)
+    # added
+    act_idxes = act_idxes.long()
     # As for F.cross_entropy, preds should be logits and targets can be indexes
-    act_loss = F.cross_entropy(disc_fake_out['act_recon'], act_idxes)
-    loss_dict['act_loss'] = act_loss
-    total_loss += act_loss
+    gen_act_loss = F.cross_entropy(disc_fake_out['act_recon'], act_idxes)
+    loss_dict['gen_act_loss'] = gen_act_loss
+    total_loss += gen_act_loss
 
     # Info loss
     z_real = torch.cat(gen_out['zs'], dim=0)
@@ -73,7 +75,10 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     # total time steps for x and x_hat: total_steps - 1
     x = torch.cat(x_real[1:len(gen_out['out_imgs']) + 1], dim=0)
     x_hat = torch.cat(gen_out['out_imgs'], dim=0)
-    recon_loss = F.mse_loss(x_hat, x)
+    #recon_loss = F.mse_loss(x_hat, x)
+    # this is how the author calculates the image reconstruction loss
+    x = x.detach()
+    recon_loss = F.mse_loss(x_hat, x, reduction='sum') / x.size(0)
     loss_dict['recon_loss'] = recon_loss
     total_loss += opts.lambda_r * recon_loss
     
@@ -83,7 +88,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     feat = disc_real_out['pred_frame_fmaps'].detach()
     feat_hat = disc_fake_out['pred_frame_fmaps']
     # L1 loss is used in the original code.
-    feat_loss = F.l1_loss(feat, feat_hat)
+    feat_loss = F.l1_loss(feat_hat, feat)
     loss_dict['feat_loss'] = feat_loss
     total_loss += opts.lambda_f * feat_loss
 
@@ -188,6 +193,7 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
         loss_dict[f'disc_real_tempo_loss{i}'] = tmp_tempo_loss
         disc_avg_tempo_loss += tmp_tempo_loss
     disc_avg_tempo_loss = disc_avg_tempo_loss / hier_levels
+    loss_dict['disc_avg_real_tempo_loss'] = disc_avg_tempo_loss
     total_loss += disc_avg_tempo_loss
 
     # Action loss
@@ -196,9 +202,9 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     a_real = torch.cat(a[:-1], dim=0)
     _, act_idxes = torch.max(a_real, 1)
     # As for F.cross_entropy, preds should be logits and targets can be indexes
-    act_loss = F.cross_entropy(disc_real_out['act_recon'], act_idxes)
-    loss_dict['act_loss'] = act_loss
-    total_loss += act_loss
+    disc_act_loss = F.cross_entropy(disc_real_out['act_recon'], act_idxes)
+    loss_dict['disc_act_loss'] = disc_act_loss
+    total_loss += disc_act_loss
 
     # gradient penalty for real data
     reg = 0
@@ -237,6 +243,7 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
         loss_dict[f'disc_fake_tempo_loss{i}'] = tmp_tempo_loss
         disc_fake_avg_tempo_loss += tmp_tempo_loss
     disc_fake_avg_tempo_loss = disc_fake_avg_tempo_loss / hier_levels
+    loss_dict['disc_fake_avg_tempo_loss'] = disc_fake_avg_tempo_loss
     total_loss += disc_fake_avg_tempo_loss
 
     # Info loss
