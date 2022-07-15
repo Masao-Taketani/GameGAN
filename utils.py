@@ -164,7 +164,7 @@ def draw_output(gout, states, warm_up, opts, vutils, vis_num_row, normalize, log
             warm_up_states = rescale(warm_up_states)
         warm_up_states = torch.clamp(warm_up_states, 0, 1.0)
         x = vutils.make_grid(
-            warm_up_states, nrow=(warm_up) // vis_num_row,
+            warm_up_states, nrow=max(1, (warm_up) // vis_num_row),
             normalize=normalize, scale_each=normalize
         )
         logger.add_image(tag + '_output/WARMUPImage', x, it)

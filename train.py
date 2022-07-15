@@ -64,7 +64,11 @@ def train(opts):
     log_iter = max(1,int(train_len // 10))
     del data_iters
 
-    for epoch in range(opts.num_epochs):
+    start_epoch = 0
+    if opts.resume_epoch is not None:
+        start_epoch = opts.resume_epoch
+
+    for epoch in range(start_epoch, opts.num_epochs):
         print(f'[epoch {epoch}]')
         updated_warmup_steps = utils.update_warmup_steps(opts, epoch)
         # clear gpu memory cache
