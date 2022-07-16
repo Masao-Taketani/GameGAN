@@ -1,8 +1,15 @@
 import torch
+import keyboard
+import cv2
+import numpy as np
 
 from options.test_options import TestOptions
 from models.model_modules import get_gen_model_arch_dict, get_disc_model_arch_dict
 import utils
+
+
+# Initial image is always given for inference
+WARMUP_STEPS = 1
 
 
 def run_simulator(test_opts):
@@ -34,6 +41,47 @@ def run_simulator(test_opts):
     gen, _ = utils.create_models(train_opts, use_gpu, num_action_spaces, img_size, 
                                  gen_model_arch_dict, device, disc_model_arch_dict)
 
+    # Load an initial image
+    img = utils.BGR2RGB(test_opts.init_img_path)
+    img = utils.make_channels_first_and_normalize_img(img)
+
+    imgs = [torch.tensor([img], dtype=torch.float32).cuda()]
+    acts = [torch.tensor(stay, dtype=torch.float32).cuda()]
+
+    utils.set_grads(gen, False)
+    gen.eval()
+
+    gen_img = None
+
+    # simulator loop
+    while True:
+        act_label = ''
+        if keyboard.is_pressed('e'):
+            exit()
+        elif gen_img is None:
+            # Run warmup to get initial values
+            # warmup is set to 0, so initial image is going to be used as input
+            gen_img, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
+               unmasked_base_imgs, alpha_losses = gen.run_warmup_phase(imgs, acts, WARMUP_STEPS)
+            h, c = warmup_h_c
+
+            # TODO: need to implement the rest
+
+        
+        elif keyboard.is_pressed('a'):
+            act = torch.tensor([left], dtype=torch.float32).cuda()
+            hidden_action = -1
+        elif keyboard.is_pressed('d'):
+            act = torch.tensor([right], dtype=torch.float32).cuda()
+            hidden_action = 1
+        else:
+            act = torch.tensor([stay], dtype=torch.float32).cuda()
+            hidden_action = 0
+
+        x_next, h_next, c_next, z, M, alpha, m_vec, fine_masks, maps, base_imgs, alpha_loss \
+                                 = gen.proceed_step(gen_img, h, c, act, M, alpha_prev, m_vec_prev)
+
+    
 
 if __name__ == '__main__':
     opts = TestOptions().parse()

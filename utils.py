@@ -5,6 +5,7 @@ from torch import distributions
 from torch import autograd
 import numpy as np
 import math
+import cv2
 
 from models.generator import Generator
 from models.discriminator import Discriminator
@@ -20,6 +21,10 @@ def make_channels_last_and_denormalize_img(img):
     # convert img from channels first to channels last and denormalize it
     img = (np.transpose(img, axes=(1, 2, 0)))
     return (((img + 1.0) / 2.0) * 255.0).to(torch.int64)
+
+
+def BGR2RGB(img):
+    return cv2.imread(img)[...,::-1]
 
 
 def make_label_idx_to_onehot(label_idx, num_action_space):
