@@ -31,6 +31,7 @@ def train(opts):
 
     gen, disc = utils.create_models(opts, use_gpu, num_action_spaces, img_size, 
                                     gen_model_arch_dict, device, disc_model_arch_dict)
+    # 're' stands for rendering engine
     key = 're'
     # Generator optimization for dynamics engine
     gen_tempo_optim = utils.get_optim(gen, opts.lr, exclude=key, model_name='gen_tempo_optim')
