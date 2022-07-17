@@ -83,6 +83,7 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
     total_loss += opts.lambda_r * recon_loss
     
     # Feature reconstruction loss
+    x = torch.cat(x_real[1:len(gen_out['out_imgs']) + 1], dim=0)
     disc_real_out = disc(x, a[:-1], warmup_steps, x_real)
     # feat is not included for the generator loss
     feat = disc_real_out['pred_frame_fmaps'].detach()
@@ -177,9 +178,11 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     total_loss += disc_real_single_img_loss
 
     # Action-conditioned discriminator loss (including negative actions)
+    # (x_t, x_t+1, a_t)
     disc_act_cond_loss = losses.discriminator_hinge_loss(disc_real_out['act_preds'], True)
     loss_dict['disc_act_cond_loss'] = disc_act_cond_loss
     total_loss += disc_act_cond_loss
+    # (x_t, x_t+1, a_t_bar)
     disc_neg_act_cond_loss = losses.discriminator_hinge_loss(disc_real_out['neg_act_preds'], False)
     loss_dict['disc_neg_act_cond_loss'] = disc_neg_act_cond_loss
     total_loss += disc_neg_act_cond_loss
@@ -230,7 +233,7 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     loss_dict['disc_fake_single_img_loss'] = disc_fake_single_img_loss
     total_loss += disc_fake_single_img_loss
 
-    # Action-conditioned discriminator loss
+    # Action-conditioned discriminator loss (x_t_hat, x_t+1_hat, a_t)
     disc_fake_act_cond_loss = losses.discriminator_hinge_loss(disc_fake_out['act_preds'], False)
     loss_dict['disc_fake_act_cond_loss'] = disc_fake_act_cond_loss
     total_loss += disc_fake_act_cond_loss

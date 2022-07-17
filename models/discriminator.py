@@ -1,6 +1,5 @@
-from tokenize import Single
 import torch
-from torch import neg, neg_, nn
+from torch import nn
 from torch.nn.utils import spectral_norm as SN
 from models.model_modules import DResBlock, SA, Reshape
 
@@ -12,7 +11,7 @@ class Discriminator(nn.Module):
     """
 
     def __init__(self, batch_size, model_arch_dict, action_space, img_size, hidden_dim, neg_slope, 
-                 temporal_window):
+                 temporal_window, z_dim):
         super(Discriminator, self).__init__()
         self.batch_size = batch_size
         self.img_size = img_size
@@ -20,7 +19,7 @@ class Discriminator(nn.Module):
         self.temporal_window = temporal_window
 
         self.single_disc = SingleImageDiscriminator(model_arch_dict)
-        self.act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope)
+        self.act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope, z_dim)
         self.tempo_disc = TemporalDiscriminator(self.batch_size, self.img_size, self.temporal_window, self.neg_slope)
 
     def forward(self, imgs, actions, num_warmup_frames, real_frames, neg_actions=None):
@@ -120,7 +119,7 @@ class SingleImageDiscriminator(nn.Module):
 
 class ActionConditionedDiscriminator(nn.Module):
 
-    def __init__(self, action_space, img_size, hidden_dim, neg_slope, debug=False):
+    def __init__(self, action_space, img_size, hidden_dim, neg_slope, z_dim, debug=False):
         super(ActionConditionedDiscriminator, self).__init__()
         # In the original code, 256 is always used for the dim
         self.action_space = action_space
@@ -128,7 +127,6 @@ class ActionConditionedDiscriminator(nn.Module):
 
         dim = 256
         kernel_size = (3, 5) if img_size[0] == 48 and img_size[1] == 80 else 4
-        act_z = 32
 
         self.action_emb = nn.Linear(action_space, dim)
         # In the original code, BatchNorm is not used for block1 and block2
@@ -142,7 +140,7 @@ class ActionConditionedDiscriminator(nn.Module):
                                                    nn.LeakyReLU(neg_slope),
                                                    SN(nn.Linear(hidden_dim, 1)))
 
-        self.reconstruct_action_z = nn.Linear(dim, action_space + act_z)
+        self.reconstruct_action_z = nn.Linear(dim, action_space + z_dim)
         
     def forward(self, actions, x_t0_fmaps, x_t1_fmaps, neg_actions):
         neg_act_preds = None

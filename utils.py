@@ -105,7 +105,7 @@ def create_models(opts, use_gpu, num_action_spaces, img_size, gen_model_arch_dic
                     opts.dataset_name, 21, device, opts.memory_dim)
 
     disc = Discriminator(opts.batch_size, disc_model_arch_dict, num_action_spaces, img_size, 
-                         opts.hidden_dim, opts.neg_slope, opts.temporal_window)
+                         opts.hidden_dim, opts.neg_slope, opts.temporal_window, opts.z_dim)
 
     if use_gpu:
         return gen.cuda(), disc.cuda()
@@ -353,7 +353,7 @@ def rescale(x):
 
 
 def update_warmup_steps(opts, epoch):
-    return max(1, math.ceil(opts.warmup_steps * (1 - epoch * 1 / opts.num_epochs)))
+    return max(0, math.ceil(opts.warmup_steps * (1 - epoch * 1 / opts.num_epochs)))
 
 
 def adjust_img_to_render(img, resized_img_size=None, interpolation=cv2.INTER_NEAREST):

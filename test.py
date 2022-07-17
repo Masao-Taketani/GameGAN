@@ -9,7 +9,7 @@ import utils
 
 
 # Initial image is always given for inference
-WARMUP_STEPS = 1
+WARMUP_STEPS = 0
 FPS = 30
 
 
@@ -76,8 +76,7 @@ def run_simulator(test_opts):
             gen_img, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
                unmasked_base_imgs, alpha_losses = gen.run_warmup_phase(imgs, acts, WARMUP_STEPS)
             h, c = warmup_h_c
-            img = gen_img[0].cpu().numpy()
-            img = utils.adjust_img_to_render(img, resized_img_size)
+            img = utils.adjust_img_to_render(gen_img[0], resized_img_size)
             cv2.imshow(f'{train_opts.dataset_name} - inference', img)
             cv2.waitKey(1000)
             continue
@@ -97,8 +96,7 @@ def run_simulator(test_opts):
         gen_img, h, c, z, M, alpha_prev, m_vec_prev, _, _, _, _ = gen.proceed_step(
                                                             gen_img, h, c, act, M, alpha_prev, m_vec_prev)
 
-        img = gen_img[0].cpu().numpy()
-        img = utils.adjust_img_to_render(img, resized_img_size)
+        img = utils.adjust_img_to_render(gen_img[0], resized_img_size)
         rectangle = img.copy()
         cv2.rectangle(rectangle, (0, 0), (150, 30), (0, 0, 0), -1)
         img = cv2.addWeighted(rectangle, 0.6, img, 0.4, 0)
