@@ -3,6 +3,7 @@ import torch.functional as F
 from torch.autograd import Variable
 from torch import distributions
 from torch import autograd
+from torch import nn
 import numpy as np
 import math
 import cv2
@@ -19,12 +20,12 @@ def make_channels_first_and_normalize_img(img):
 
 def make_channels_last_and_denormalize_img(img):
     # convert img from channels first to channels last and denormalize it
-    img = (np.transpose(img, axes=(1, 2, 0)))
-    return (((img + 1.0) / 2.0) * 255.0).to(torch.int64)
+    img = np.transpose(img, axes=(1, 2, 0))
+    return ((img + 1.0) * 127.5).astype(np.uint8)
 
 
-def BGR2RGB(img):
-    return cv2.imread(img)[...,::-1]
+def reverse_color_order(img):
+    return img[...,::-1]
 
 
 def make_label_idx_to_onehot(label_idx, num_action_space):
@@ -353,3 +354,33 @@ def rescale(x):
 
 def update_warmup_steps(opts, epoch):
     return max(1, math.ceil(opts.warmup_steps * (1 - epoch * 1 / opts.num_epochs)))
+
+
+def adjust_img_to_render(img, resized_img_size=None, interpolation=cv2.INTER_NEAREST):
+    img = img.cpu().numpy()
+    img = make_channels_last_and_denormalize_img(img)
+    if resized_img_size is not None:
+        img = cv2.resize(img, resized_img_size, interpolation=interpolation)
+    return reverse_color_order(img)
+
+
+def load_my_state_dict(self, state_dict):
+    own_state = self.state_dict()
+    for name, param in own_state.items():
+        print(name)
+    for name, param in state_dict.items():
+        print(name)
+        if name not in own_state:
+            name = name.replace('module.', '')
+            if name not in own_state:
+                continue
+        print(name)
+        if isinstance(param, nn.Parameter):
+            param = param.data
+        try:
+            own_state[name].copy_(param)
+        except:
+            print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ' + name + ' NOT LOADED')
+            print(param.size())
+            print(own_state[name].size())
+            continue

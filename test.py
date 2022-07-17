@@ -1,7 +1,7 @@
 import torch
 import keyboard
 import cv2
-import numpy as np
+import time
 
 from options.test_options import TestOptions
 from models.model_modules import get_gen_model_arch_dict, get_disc_model_arch_dict
@@ -10,6 +10,7 @@ import utils
 
 # Initial image is always given for inference
 WARMUP_STEPS = 1
+FPS = 30
 
 
 def run_simulator(test_opts):
@@ -25,7 +26,7 @@ def run_simulator(test_opts):
         # 0: left, 1: no action, 2: right
         resized_img_size = (320, 192)
         left = [1, 0, 0]
-        stay = [0, 1, 0]
+        forward = [0, 1, 0]
         right = [0, 0, 1]
     else:
         raise NotImplementedError()
@@ -41,12 +42,21 @@ def run_simulator(test_opts):
     gen, _ = utils.create_models(train_opts, use_gpu, num_action_spaces, img_size, 
                                  gen_model_arch_dict, device, disc_model_arch_dict)
 
+    utils.load_my_state_dict(gen, model_path['netG'])
+
+    # Set batch size as 1 for inference
+    gen.batch_size = 1
+
     # Load an initial image
-    img = utils.BGR2RGB(test_opts.init_img_path)
+    img = cv2.imread(test_opts.init_img_path)
+    img = utils.reverse_color_order(img)
     img = utils.make_channels_first_and_normalize_img(img)
 
     imgs = [torch.tensor([img], dtype=torch.float32).cuda()]
-    acts = [torch.tensor(stay, dtype=torch.float32).cuda()]
+    print('imgs:', len(imgs), imgs[0].shape, imgs[0])
+    # Start an initial action with forward
+    acts = [torch.tensor(forward, dtype=torch.float32).cuda()]
+    print('acts:', len(acts), acts[0].shape, acts[0])
 
     utils.set_grads(gen, False)
     gen.eval()
@@ -55,32 +65,61 @@ def run_simulator(test_opts):
 
     # simulator loop
     while True:
+        frame_start_time = time.time()
         act_label = ''
         if keyboard.is_pressed('e'):
             exit()
-        elif gen_img is None:
+
+        elif keyboard.is_pressed('r') or gen_img is None:
             # Run warmup to get initial values
             # warmup is set to 0, so initial image is going to be used as input
             gen_img, warmup_h_c, M, alpha_prev, m_vec_prev, out_imgs, zs, alphas, fine_mask_list, map_list, \
                unmasked_base_imgs, alpha_losses = gen.run_warmup_phase(imgs, acts, WARMUP_STEPS)
             h, c = warmup_h_c
-
-            # TODO: need to implement the rest
-
+            img = gen_img[0].cpu().numpy()
+            img = utils.adjust_img_to_render(img, resized_img_size)
+            cv2.imshow(f'{train_opts.dataset_name} - inference', img)
+            cv2.waitKey(1000)
+            continue
         
         elif keyboard.is_pressed('a'):
             act = torch.tensor([left], dtype=torch.float32).cuda()
             hidden_action = -1
+
         elif keyboard.is_pressed('d'):
             act = torch.tensor([right], dtype=torch.float32).cuda()
             hidden_action = 1
+
         else:
-            act = torch.tensor([stay], dtype=torch.float32).cuda()
+            act = torch.tensor([forward], dtype=torch.float32).cuda()
             hidden_action = 0
 
-        x_next, h_next, c_next, z, M, alpha, m_vec, fine_masks, maps, base_imgs, alpha_loss \
-                                 = gen.proceed_step(gen_img, h, c, act, M, alpha_prev, m_vec_prev)
+        gen_img, h, c, z, M, alpha_prev, m_vec_prev, _, _, _, _ = gen.proceed_step(
+                                                            gen_img, h, c, act, M, alpha_prev, m_vec_prev)
 
+        img = gen_img[0].cpu().numpy()
+        img = utils.adjust_img_to_render(img, resized_img_size)
+        rectangle = img.copy()
+        cv2.rectangle(rectangle, (0, 0), (150, 30), (0, 0, 0), -1)
+        img = cv2.addWeighted(rectangle, 0.6, img, 0.4, 0)
+        cv2.putText(img, "Action:", (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        if hidden_action == -1:
+            color = (55, 155, 255)
+            text = "LEFT"
+        elif hidden_action == 1:
+            text = "RIGHT"
+            color = (55, 155, 255)
+        elif hidden_action == 0:
+            text = "FORWARD"
+            color = (55, 255, 55)
+
+        cv2.putText(img, text, (80, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+        cv2.imshow(f'{train_opts.dataset_name} - inference', img)
+        cv2.waitKey(1)
+
+        wait = 1 / FPS - (time.time() - frame_start_time)
+        if wait > 0:
+            time.sleep(wait)
     
 
 if __name__ == '__main__':
