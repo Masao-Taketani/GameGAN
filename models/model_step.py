@@ -103,9 +103,9 @@ def run_generator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_optim
         reverse_reals = [comp[0] for comp in gen_out['unmasked_base_imgs']]
         gen_out['reverse_real'] = reverse_reals[:num_reverse]
         reverse_real = torch.cat(gen_out['reverse_real'], dim=0)
-        cycle_loss = F.mse_loss(reverse_gen_imgs, reverse_real)
+        #cycle_loss = F.mse_loss(reverse_gen_imgs, reverse_real)
+        cycle_loss = F.mse_loss(reverse_gen_imgs, reverse_real, reduction='sum') / x.size(0)
         loss_dict['cycle_loss'] = cycle_loss
-
         # Memory regularization
         avg_alpha_loss = gen_out['avg_alpha_loss']
         loss_dict['memory_reg'] = avg_alpha_loss
