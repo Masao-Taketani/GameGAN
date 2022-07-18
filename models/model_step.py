@@ -204,6 +204,8 @@ def run_discriminator_step(gen, disc, gen_tempo_optim, gen_graphic_optim, disc_o
     # based on actions time t = 0, ..., total_steps - 2
     a_real = torch.cat(a[:-1], dim=0)
     _, act_idxes = torch.max(a_real, 1)
+    # added
+    act_idxes = act_idxes.long()
     # As for F.cross_entropy, preds should be logits and targets can be indexes
     disc_act_loss = F.cross_entropy(disc_real_out['act_recon'], act_idxes)
     loss_dict['disc_act_loss'] = disc_act_loss
