@@ -7,16 +7,18 @@ import random
 import utils
 
 
-def create_custom_dataloader(data_name, to_train, batch_size, num_workers, pin_memory, num_action_spaces, 
-                             split_ratio=0.9, dirpath=None):
+def create_custom_dataloader(data_name, to_train, batch_size, num_workers, pin_memory, num_steps, 
+                             num_action_spaces, split_ratio=0.9, dirpath=None):
     
     shuffle = True if to_train else False
 
     if data_name == 'gta':
         if not dirpath:
-            dataset = GTADataset(to_train, split_ratio, num_action_spaces=num_action_spaces)
+            dataset = GTADataset(to_train, split_ratio, num_steps=num_steps, 
+                                 num_action_spaces=num_action_spaces)
         else:
-            dataset = GTADataset(to_train, split_ratio, num_action_spaces=num_action_spaces, dirpath=dirpath)
+            dataset = GTADataset(to_train, split_ratio, num_steps=num_steps, 
+                                 num_action_spaces=num_action_spaces, dirpath=dirpath)
     else:
         raise Exception('spacify one of the supported dataset name: [gta]')
     

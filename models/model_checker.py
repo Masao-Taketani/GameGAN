@@ -100,7 +100,7 @@ def check_single_disc():
 
 
 def check_act_cond_disc():
-    act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope, True)
+    act_cond_disc = ActionConditionedDiscriminator(action_space, img_size, hidden_dim, neg_slope, z_dim, True)
     model = act_cond_disc.to(device)
     summary(model, [(3,), (256, 3, 5), (256, 3, 5), (3,)])
 

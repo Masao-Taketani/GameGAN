@@ -108,7 +108,7 @@ class SingleImageDiscriminator(nn.Module):
         h = x
         for f in self.module_list:
             h = f(h)
-        # shape of h: (bs, out_channels, h, w)
+        # shape of h: (bs, out_channels, h', w')
         h = self.activation(h)
         # Apply global sum pooling as in SN-GAN. It returns (bs, out_channels)
         out = torch.sum(h, [2, 3])
