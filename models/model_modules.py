@@ -25,8 +25,7 @@ class H(nn.Module):
 
         # two-layered MLP
         self.mlp = nn.Sequential(nn.Linear(self.concat_dim, self.concat_dim),
-                                 nn.LeakyReLU(neg_slope),
-                                 nn.Linear(self.concat_dim, self.concat_dim))
+                                 nn.LeakyReLU(neg_slope))
 
 
     def forward(self, a, z, m_vec_prev=None):
@@ -134,13 +133,18 @@ class ActionLSTM(nn.Module):
     def __init__(self, hidden_dim, neg_slope, concat_dim):
         super(ActionLSTM, self).__init__()
         self.hidden_dim = hidden_dim
+
+        # project h onto the concat_dim
+        self.proj_h = nn.Linear(hidden_dim, concat_dim)
+
+        self.proj_H = nn.Linear(concat_dim, concat_dim)
+        
         # 4 * hidden_dim is used for i_t, f_t, o_t, c_t
         # self.W_v = nn.Sequential([nn.Linear(concat_dim, 4 * hidden_dim)])
         # this is used in the original repo
         self.W_v = nn.Sequential(nn.Linear(concat_dim, concat_dim),
                                  nn.LeakyReLU(neg_slope),
                                  nn.Linear(concat_dim, 4 * hidden_dim))
-        self.W_s = nn.Sequential(nn.Linear(hidden_dim, 4 * hidden_dim))
 
         self.init_Ws()
 
@@ -149,8 +153,9 @@ class ActionLSTM(nn.Module):
         for w in self.parameters():
             w.data.uniform_(-std, std)
 
-    def forward(self, c_prev, v, s):
-        weighted_v_s = self.W_v(v) + self.W_s(s)
+    def forward(self, h, c_prev, H, weighted_s):
+        weighted_v = self.W_v(self.proj_h(h) * self.proj_H(H))
+        weighted_v_s = weighted_v + weighted_s
         i_t = weighted_v_s[:, :self.hidden_dim].sigmoid()
         f_t = weighted_v_s[:, self.hidden_dim: 2* self.hidden_dim].sigmoid()
         o_t = weighted_v_s[:, 2 * self.hidden_dim: 3 * self.hidden_dim].sigmoid()

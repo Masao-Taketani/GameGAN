@@ -72,7 +72,7 @@ def train(opts):
     for epoch in range(start_epoch, opts.num_epochs):
         print(f'[epoch {epoch}]')
         updated_warmup_steps = utils.update_warmup_steps(opts, epoch)
-        print('updated_warmup_steps:', updated_warmup_steps)
+        #print('updated_warmup_steps:', updated_warmup_steps)
         # clear gpu memory cache
         torch.cuda.empty_cache()
 
@@ -82,7 +82,6 @@ def train(opts):
                 imgs = utils.to_gpu(imgs)
                 acts = utils.to_gpu(acts)
                 neg_acts = utils.to_gpu(neg_acts)
-                print(len(imgs), len(acts), len(neg_acts))
             #print(len(imgs), len(acts), len(neg_acts))
             #print(imgs[0].shape, acts[0].shape, neg_acts[0].shape)
 

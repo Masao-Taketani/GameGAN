@@ -71,7 +71,8 @@ img_size = (48, 80)
 def check_dynamics_engine():
     de = DynamicsEngine(z_dim, hidden_dim, num_a_space, neg_slope, img_size, num_inp_channels, memory_dim=memory_dim)
     model = de.to(device)
-    h, w = [int(i) for i in img_size.split('x')]
+    #h, w = [int(i) for i in img_size.split('x')]
+    h, w = img_size
     if memory_dim is not None:
         # with memory
         summary(model, [(hidden_dim,), (hidden_dim,), (num_inp_channels, h, w), (num_a_space,), (z_dim,), (memory_dim,)])
@@ -111,15 +112,22 @@ def check_tempo_disc():
     summary(model, [(256, 3, 5), (16,)])
 
 
-if __name__ == '__main__':
+def check_generator():
     # generator tests
-    #print('generator tests')
-    #check_dynamics_engine()
-    #check_memory()
-    #check_rendering_engine()
+    print('generator tests')
+    check_dynamics_engine()
+    check_memory()
+    check_rendering_engine()
 
+
+def check_discriminator():
     # discriminator tests
     print('discriminator tests')
     check_single_disc()
     check_act_cond_disc()
     check_tempo_disc()
+
+
+if __name__ == '__main__':
+    #check_generator()
+    check_discriminator()

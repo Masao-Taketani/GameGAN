@@ -172,9 +172,8 @@ class DynamicsEngine(nn.Module):
                  num_inp_channels, memory_dim=None):
         super(DynamicsEngine, self).__init__()
         self.H = H(z_dim, hidden_dim, num_a_space, neg_slope, memory_dim)
-        # project h onto the concat_dim
-        self.proj_h = nn.Linear(hidden_dim, self.H.concat_dim)
         self.C = C(hidden_dim, neg_slope, img_size, num_inp_channels)
+        self.W_s = nn.Sequential(nn.Linear(hidden_dim, 4 * hidden_dim))
         self.action_lstm = ActionLSTM(hidden_dim, neg_slope, self.H.concat_dim)
 
     def init_hidden_state_and_cell(self, batch_size):
@@ -191,9 +190,9 @@ class DynamicsEngine(nn.Module):
             z: z_t
             m_vec_prev: retrieved memory vector in the previous step
         """
-        v_t = self.proj_h(h) * self.H(a, z, m_vec_prev)
-        s_t = self.C(x)
-        h_t, c_t = self.action_lstm(c, v_t, s_t)
+        H = self.H(a, z, m_vec_prev)
+        weighted_s = self.W_s(self.C(x))
+        h_t, c_t = self.action_lstm(h, c, H, weighted_s)
         return h_t, c_t
 
 
