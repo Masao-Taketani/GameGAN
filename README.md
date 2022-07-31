@@ -16,9 +16,9 @@ For this experiment, I used [GTA](https://github.com/Sentdex/GANTheftAuto/tree/m
 ```
 $ python train.py --datapath [enter your dataset path here]
 ```
-## Test
+## Test (MUST be root to use the keyboard library)
 ```
-$ python test.py --model_path [enter your model path here]
+$ sudo python test.py --model_path [enter your model path here]
 ```
 
 ## References
