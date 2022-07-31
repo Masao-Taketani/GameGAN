@@ -1,4 +1,3 @@
-from sklearn.utils import shuffle
 from torch.utils import data
 from pathlib import Path
 import gzip
