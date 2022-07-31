@@ -6,6 +6,7 @@ import time
 from options.test_options import TestOptions
 from models.model_modules import get_gen_model_arch_dict, get_disc_model_arch_dict
 import utils
+import data
 
 
 # Initial image is always given for inference
@@ -43,23 +44,32 @@ def run_simulator(test_opts):
                                  gen_model_arch_dict, device, disc_model_arch_dict)
 
     utils.load_my_state_dict(gen, model_path['netG'])
+    #gen.load_state_dict(torch.load(model_path))
+    #print('gen:', gen)
+    utils.set_grads(gen, False)
+    gen.eval()
 
     # Set batch size as 1 for inference
     gen.batch_size = 1
 
-    # Load an initial image
-    img = cv2.imread(test_opts.init_img_path)
-    img = utils.reverse_color_order(img)
-    img = utils.make_channels_first_and_normalize_img(img)
+    if test_opts.init_img_path is None:
+        train_loader = data.create_custom_dataloader(train_opts.dataset_name, True, train_opts.batch_size, 
+                                                train_opts.num_workers, train_opts.pin_memory, 
+                                                train_opts.total_steps, num_action_spaces, 
+                                                train_opts.split_ratio, train_opts.datapath)
+        for imgs, acts, _ in train_loader:
+            break
+        imgs = utils.to_gpu(imgs)
+        acts = utils.to_gpu(acts)
+    else:
+        # Load an initial image
+        img = cv2.imread(test_opts.init_img_path)
+        img = utils.reverse_color_order(img)
+        img = utils.make_channels_first_and_normalize_img(img)
 
-    imgs = [torch.tensor([img], dtype=torch.float32).cuda()]
-    print('imgs:', len(imgs), imgs[0].shape, imgs[0])
-    # Start an initial action with forward
-    acts = [torch.tensor(forward, dtype=torch.float32).cuda()]
-    print('acts:', len(acts), acts[0].shape, acts[0])
-
-    utils.set_grads(gen, False)
-    gen.eval()
+        imgs = [torch.tensor([img], dtype=torch.float32).cuda()]
+        # Start an initial action with forward
+        acts = [torch.tensor(forward, dtype=torch.float32).cuda()]
 
     gen_img = None
 
